@@ -38,12 +38,13 @@ Install `requirements.txt`, then run:
 python train.py --data-dir data/processed --output-dir checkpoints
 ```
 
-The defaults use 256-pixel patches, batch size 4, up to 100 epochs, and mixed
-precision when CUDA is available. Training stops after 15 epochs without an
-improvement in held-out flood IoU; adjust this with `--patience`. Each scene
-contributes 16 randomly cropped training patches per epoch; validation evaluates
-a deterministic grid of patches across each held-out event. The history file
-records flood IoU, precision, recall, F1, pixel accuracy, and pixel error rate.
+The defaults use native 224-pixel tiles, batch size 4, one sampled patch per
+training tile per epoch, up to 100 epochs, and mixed precision when CUDA is
+available. Training stops after 15 epochs without an improvement in validation
+flood IoU; adjust this with `--patience`. Validation evaluates a deterministic
+grid over complete held-out tiles. The history records flood IoU, precision,
+recall, specificity, balanced accuracy, F1, pixel accuracy, and pixel error
+rate.
 Flood IoU and F1 are the more useful measures for imbalanced flood masks; pixel
 accuracy alone can look high when the model misses flood pixels. If memory is
 limited, reduce `--batch-size` or `--patch-size`. Training stops with a clear
@@ -55,10 +56,17 @@ event-held-out validation split.
 - `checkpoints/best.pt`: model and optimizer state for the epoch with the best
   validation flood IoU, plus model and normalization configuration.
 - `checkpoints/latest.pt`: most recent epoch checkpoint.
-- `checkpoints/training_history.csv`: training and validation loss, flood IoU,
-  and pixel accuracy for each epoch.
+- `checkpoints/training_history.csv`: training and validation loss and
+  segmentation metrics for each epoch.
 
 Flood IoU is computed only for class `1`; nodata pixels (`255`) are excluded.
 The checkpoint is a trained artifact only after this command has run over real,
 labeled data. No weights are included in this repository, and random/dummy
 samples are never used by the training command.
+
+Checkpoints created before explicit per-dataset SAR statistics were passed to
+data-loader workers cannot be resumed with the corrected pipeline. Train a new
+checkpoint after updating the input pipeline. The current held-out report is a
+diagnostic result from a pre-correction checkpoint and must not be presented as
+the final model score. A final score should include an event-level test set that
+was not used to select the checkpoint or tune prediction settings.

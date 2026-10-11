@@ -45,9 +45,9 @@ During severe monsoon rains and extreme weather disasters (such as the Trishuli 
 
 ### Key Capabilities
 * **All-Weather Dual-Polarization SAR Inundation Mapping:** Ingests Sentinel-1 VV (vertical transmit/receive) and VH (cross-polarization) radar backscatter in decibels ($\text{dB}$) to delineate smooth specular floodwaters.
-* **Lightweight Custom Neural Network (`FloodUNet`):** A custom 1.63M parameter U-Net architecture trained completely from scratch without external pre-trained backbones, optimized for sub-4GB VRAM and rapid field execution.
-* **Physics-Grounded Anti-Hallucination Filters:** Suppresses radar layover, mountain shadow, and permanent water misclassifications using temporal change consistency, temperature scaling, calibrated confidence thresholds, and morphological speckle cleaning.
-* **Class B Debris & Valley Change Detection:** Detects radar roughness increases ($\Delta\text{dB} \ge +2.0\text{ dB}$) in valley corridors to map post-flood boulder, mud, and gravel deposits.
+* **Custom Neural Network (`FloodUNet`):** A 1,084,490-parameter U-Net trained from scratch. It takes post-event Sentinel-1 VV/VH and predicts background versus flood; it is not a learned debris classifier.
+* **Heuristic Flood Postprocessing:** Optional pre/post backscatter filtering and configurable probability/morphology thresholds are available. These filters are heuristics, not fitted probability calibration, and are not yet independently validated for all terrain and orbit conditions.
+* **Experimental Debris Candidates:** The separate debris module uses backscatter-change heuristics to flag possible surface change. These outputs are not verified debris or damage labels.
 * **Topological Road Graph Connectivity Routing:** Builds an OpenStreetMap (OSM) highway network in NetworkX, removes severed roads and bridges, and classifies settlements into `CONNECTED`, `CUT_OFF`, or `UNKNOWN`.
 * **DEM Downstream Flow-Path Tracing:** Computes D8 steepest-descent hydraulic flow vectors over Copernicus WorldDEM-30 to project downriver flood progression corridors and downstream communities at risk.
 * **Actionable Emergency Outputs:** Emits a cryptographically verified single-source-of-truth metadata file (`facts.json`), a print-ready 1-page executive HTML situation report, and an interactive Leaflet web dashboard.
@@ -220,7 +220,7 @@ aimodel/
 ├── README.md                    # Primary project documentation (this file)
 ├── MODEL_TRAINING.md            # Deep dive into training procedure & parameters
 │
-├── model.py                     # FloodUNet PyTorch architecture (1.63M params)
+├── model.py                     # FloodUNet PyTorch architecture (1.08M params)
 ├── dataset.py                   # KuroSiwo PyTorch Dataset loader & augmentations
 ├── train.py                     # Training loop with ComboLoss & early stopping
 ├── predict.py                   # Inference engine & anti-hallucination filters
@@ -282,7 +282,7 @@ aimodel/
 
 The primary AI segmentation network is implemented in `model.py` as an encoder-decoder architecture initialized from scratch using Kaiming normal distribution (`fan_out`, ReLU).
 
-* **Input Layer:** 2 channels ($C=2$):
+* **Input Layer:** 2 post-event channels ($C=2$):
   - Band 1: Sentinel-1 VV backscatter ($\sigma^0_{\text{dB}}$)
   - Band 2: Sentinel-1 VH backscatter ($\sigma^0_{\text{dB}}$)
 * **Encoder Pathway:** 4 downsampling stages with double $3 \times 3$ convolutions, Batch Normalization, and ReLU activations:
@@ -291,7 +291,11 @@ The primary AI segmentation network is implemented in `model.py` as an encoder-d
   $$\text{Stage 3: } 192 \to 96 \quad | \quad \text{Stage 2: } 96 \to 48 \quad | \quad \text{Stage 1: } 48 \to 24$$
 * **Bilinear Interpolation Guard:** Automatically resolves off-by-one spatial dimension mismatches during skip concatenation for odd-sized inputs (e.g. $225 \times 225$).
 * **Segmentation Head:** $1 \times 1$ convolution mapping 24 features to 2 logits: Class 0 (Background / Dry Land) and Class 1 (Inundated Water).
-* **Footprint:** ~1.63M parameters (~13 MB checkpoint), ensuring execution on modest edge GPUs (such as NVIDIA RTX 3050).
+* **Footprint:** 1,084,490 parameters. Checkpoint files also include optimizer and training-resume state.
+
+The network itself predicts only background and flood. It does not take paired
+pre/post images as learned channels; the optional pre-event comparison is a
+separate heuristic in postprocessing.
 
 ---
 
@@ -316,13 +320,13 @@ $$\mathcal{L}_{\text{total}} = 0.35 \cdot \mathcal{L}_{\text{wCE}} + 0.35 \cdot 
 
 SAR segmentation in mountainous terrain is prone to false positives caused by radar shadow, layover, and dark tarmac surfaces. FloodSight AI incorporates a multi-tier suppression filter (`predict.py`):
 
-1. **Temperature Scaling:** Raw logits are calibrated using $\tau = 1.5$ to prevent peak softmax overconfidence:
+1. **Temperature Scaling:** The default is $\tau = 1.0$ (no probability change). A different value is configurable but is not fitted calibration:
    $$p_i = \frac{\exp(z_i / \tau)}{\sum_j \exp(z_j / \tau)}$$
-2. **Calibrated Softmax Thresholding:** Rejects marginal predictions with probability $p < 0.55$.
+2. **Probability Thresholding:** Uses a configurable flood cutoff, default $p = 0.5$ (binary argmax).
 3. **Temporal Change Consistency Check:** When a pre-flood SAR image is available, pixels must demonstrate a genuine backscatter drop caused by specular reflection off open water:
    $$\Delta\text{dB} = \text{dB}_{\text{pre}} - \text{dB}_{\text{post}} \ge 1.5\text{ dB}$$
    Permanent water bodies, wet rice paddies, and static radar shadows ($\Delta\text{dB} \approx 0$) are rejected.
-4. **Morphological Speckle Cleaning:** Eliminates isolated false-positive speckle clusters ($< 20\text{ pixels}$) and fills interior holes in solid flood bodies.
+4. **Morphological Filtering:** Disabled by default; optional minimum-component filtering is a user-selected heuristic and has not been independently validated.
 
 ---
 

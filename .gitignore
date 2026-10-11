@@ -77,4 +77,4 @@ desktop.ini
 *.log
 *.tmp
 job.log
-outputs/test_job_*/
+outputs/test_*/
