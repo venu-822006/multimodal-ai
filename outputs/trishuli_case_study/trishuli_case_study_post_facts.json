@@ -1,0 +1,43 @@
+{
+  "flood_area_km2": 240.185424,
+  "flood_pixel_count": 13733,
+  "total_valid_pixels": 65536,
+  "flood_fraction": 0.209549,
+  "bbox": [
+    85.15,
+    27.9,
+    85.45,
+    28.25
+  ],
+  "crs": "EPSG:4326",
+  "pixel_area_m2": 17489.65,
+  "pixel_resolution_approx_m": 132.25,
+  "model_config": {
+    "in_channels": 2,
+    "classes": 2,
+    "base_channels": 24
+  },
+  "normalization": {
+    "mean_db": [
+      -10.03161334991455,
+      -16.04305648803711
+    ],
+    "std_db": [
+      3.6682446002960205,
+      4.359753131866455
+    ]
+  },
+  "checkpoint": "best.pt",
+  "val_flood_iou": 0.327586622139035,
+  "epoch": 6,
+  "anti_hallucination_metrics": {
+    "confidence_threshold_used": 0.55,
+    "min_cluster_px_used": 20,
+    "raw_candidates": 13733,
+    "slope_hallucinations_filtered": 0,
+    "temporal_false_positives_filtered": 0,
+    "speckle_noise_pixels_filtered": 0,
+    "verified_flood_pixels": 13733,
+    "noise_reduction_pct": 0.0
+  }
+}

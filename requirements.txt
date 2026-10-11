@@ -1,0 +1,11 @@
+torch>=2.3
+numpy
+rasterio
+scipy
+tqdm
+albumentations>=1.3,<2
+opencv-python-headless
+pystac-client>=0.8
+scikit-image
+shapely
+networkx

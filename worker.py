@@ -1,0 +1,424 @@
+"""
+worker.py  —  FloodSight AI | 10-State Job Pipeline Worker
+===========================================================
+Executes the FloodSight AI pipeline as a resilient asynchronous worker following
+the 10-state life cycle mandated by Section 4:
+
+  QUEUED -> VALIDATING -> SEARCHING_DATA -> DOWNLOADING -> PREPROCESSING ->
+  FLOOD_MAPPING -> DAMAGE_ANALYSIS -> CONNECTIVITY_ANALYSIS -> GENERATING_REPORT -> COMPLETED
+  (or FAILED on unrecoverable error)
+
+Guarantees:
+  - Supports judge-selected bounding box and flood date
+  - Requires real, aligned pre- and post-flood Sentinel-1 GeoTIFFs
+  - Uses a dated pre-event OSM snapshot for impact and connectivity analysis
+  - Uses Sentinel-2 only when real bands are explicitly supplied
+  - Emits single source of truth facts.json and executive situation report
+
+Note: STAC scene discovery is implemented, but product download and raw GRD
+preprocessing are not. The worker fails clearly when prepared scenes are absent.
+"""
+
+import argparse
+import hashlib
+import json
+import math
+import sys
+import time
+from datetime import date, datetime, timedelta
+from enum import Enum
+from pathlib import Path
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
+import rasterio
+from rasterio.warp import transform_bounds
+from rasterio.windows import Window, from_bounds
+
+
+class JobState(str, Enum):
+    QUEUED                = "QUEUED"
+    VALIDATING            = "VALIDATING"
+    SEARCHING_DATA        = "SEARCHING_DATA"
+    DOWNLOADING           = "DOWNLOADING"
+    PREPROCESSING         = "PREPROCESSING"
+    FLOOD_MAPPING         = "FLOOD_MAPPING"
+    DAMAGE_ANALYSIS       = "DAMAGE_ANALYSIS"
+    CONNECTIVITY_ANALYSIS = "CONNECTIVITY_ANALYSIS"
+    GENERATING_REPORT     = "GENERATING_REPORT"
+    COMPLETED             = "COMPLETED"
+    FAILED                = "FAILED"
+
+
+class JobContext:
+    def __init__(
+        self,
+        job_id: str,
+        bbox: list[float],
+        flood_date: str,
+        out_dir: Path,
+        pre_image: Path = None,
+        post_image: Path = None,
+        s2_green: Path = None,
+        s2_nir: Path = None,
+    ):
+        self.job_id = job_id
+        self.bbox = bbox  # [west, south, east, north]
+        self.flood_date = flood_date
+        self.out_dir = out_dir
+        self.pre_image = pre_image
+        self.post_image = post_image
+        self.s2_green = s2_green
+        self.s2_nir = s2_nir
+        self.state = JobState.QUEUED
+        self.error_message = None
+        self.history = []
+        self.out_dir.mkdir(parents=True, exist_ok=True)
+        self.log_file = self.out_dir / "job.log"
+        self.state_file = self.out_dir / "status.json"
+        self.facts_file = self.out_dir / "facts.json"
+
+    def set_state(self, state: JobState, detail: str = ""):
+        self.state = state
+        entry = {
+            "state": state.value,
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "detail": detail
+        }
+        self.history.append(entry)
+        msg = f"[{entry['timestamp']}] STATE: {self.state.value} — {detail}"
+        print(f"  --> {msg}")
+        with open(self.log_file, "a", encoding="utf-8") as f:
+            f.write(msg + "\n")
+        self.save_status()
+
+    def save_status(self):
+        status_data = {
+            "job_id": self.job_id,
+            "bbox": self.bbox,
+            "flood_date": self.flood_date,
+            "current_state": self.state.value,
+            "error_message": self.error_message,
+            "history": self.history
+        }
+        with open(self.state_file, "w", encoding="utf-8") as f:
+            json.dump(status_data, f, indent=2)
+
+
+def acquire_scene_pair(ctx: JobContext, cache_dir: Path) -> tuple[Path, Path]:
+    """Validate caller-supplied, analysis-ready Sentinel-1 scenes."""
+    if not ctx.pre_image or not ctx.post_image:
+        raise RuntimeError(
+            "No real Sentinel-1 pair was supplied. Automatic product download and "
+            "preprocessing are not implemented. Pass --pre-image and --post-image "
+            "as aligned, two-band VV/VH dB GeoTIFFs."
+        )
+    pre_path, post_path = ctx.pre_image, ctx.post_image
+    for path in (pre_path, post_path):
+        if not path.is_file():
+            raise FileNotFoundError(f"Sentinel-1 input not found: {path}")
+    if pre_path.resolve() == post_path.resolve():
+        raise ValueError("Pre-event and post-event images cannot be identical.")
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cropped = []
+    with rasterio.open(pre_path) as pre, rasterio.open(post_path) as post:
+        if pre.count < 2 or post.count < 2:
+            raise ValueError("Both Sentinel-1 inputs must contain VV and VH bands.")
+        if pre.crs is None or post.crs is None:
+            raise ValueError("Both Sentinel-1 inputs must have a defined CRS.")
+        if pre.crs.to_epsg() != 4326:
+            raise ValueError("Inputs must be preprocessed to EPSG:4326 to align with the OSM snapshot.")
+        if pre.crs != post.crs or pre.shape != post.shape or pre.transform != post.transform:
+            raise ValueError("Pre/post rasters must share CRS, dimensions, and pixel alignment.")
+        bounds = transform_bounds(pre.crs, "EPSG:4326", *pre.bounds)
+        west, south, east, north = ctx.bbox
+        if bounds[0] > west or bounds[1] > south or bounds[2] < east or bounds[3] < north:
+            raise ValueError("Sentinel-1 scenes must fully cover the requested bounding box.")
+        raw_window = from_bounds(west, south, east, north, transform=pre.transform)
+        col0 = max(0, math.floor(raw_window.col_off))
+        row0 = max(0, math.floor(raw_window.row_off))
+        col1 = min(pre.width, math.ceil(raw_window.col_off + raw_window.width))
+        row1 = min(pre.height, math.ceil(raw_window.row_off + raw_window.height))
+        if col1 <= col0 or row1 <= row0:
+            raise ValueError("Requested bounding box produced an empty raster crop.")
+        window = Window(col0, row0, col1 - col0, row1 - row0)
+
+        for source, label in ((pre, "pre"), (post, "post")):
+            out_path = cache_dir / f"{ctx.job_id}_{label}_aoi.tif"
+            profile = source.profile.copy()
+            profile.update(
+                driver="GTiff",
+                height=int(window.height),
+                width=int(window.width),
+                count=2,
+                transform=source.window_transform(window),
+                compress="lzw",
+            )
+            with rasterio.open(out_path, "w", **profile) as dst:
+                dst.write(source.read((1, 2), window=window))
+                dst.write_mask(source.dataset_mask(window=window))
+                dst.update_tags(**source.tags(), requested_bbox=",".join(map(str, ctx.bbox)))
+            cropped.append(out_path)
+    return cropped[0], cropped[1]
+
+
+def acquire_optical_pair(ctx: JobContext, cache_dir: Path) -> tuple[Path, Path] | None:
+    """Return caller-supplied Sentinel-2 bands, or None when unavailable."""
+    if not ctx.s2_green and not ctx.s2_nir:
+        return None
+    if not ctx.s2_green or not ctx.s2_nir:
+        raise ValueError("Provide both --s2-green and --s2-nir, or neither.")
+    if not ctx.s2_green.is_file() or not ctx.s2_nir.is_file():
+        raise FileNotFoundError("A supplied Sentinel-2 band file does not exist.")
+    return ctx.s2_green, ctx.s2_nir
+
+
+def _fetch_ohsome_features(bbox: list[float], snapshot_date: str, filter_expr: str, cache_dir: Path) -> dict:
+    """Fetch a historical GeoJSON extract from ohsome and cache it by query."""
+    query = {"bbox": bbox, "date": snapshot_date, "filter": filter_expr}
+    cache_key = hashlib.sha256(json.dumps(query, sort_keys=True).encode("utf-8")).hexdigest()[:16]
+    cache_path = cache_dir / f"osm_{cache_key}.geojson"
+    if cache_path.exists():
+        with cache_path.open("r", encoding="utf-8") as stream:
+            return json.load(stream)
+
+    form = urlencode({
+        "bboxes": ",".join(str(value) for value in bbox),
+        "time": snapshot_date,
+        "filter": filter_expr,
+        "properties": "tags",
+        "clipGeometry": "false",
+    }).encode("utf-8")
+    request = Request(
+        "https://api.ohsome.org/v1/elements/geometry",
+        data=form,
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded",
+            "User-Agent": "FloodSight-Educational-Prototype/1.0",
+        },
+        method="POST",
+    )
+    with urlopen(request, timeout=120) as response:
+        data = json.loads(response.read().decode("utf-8"))
+    if not isinstance(data, dict) or not isinstance(data.get("features"), list):
+        raise RuntimeError(f"ohsome returned invalid GeoJSON for filter: {filter_expr}")
+    for feature in data["features"]:
+        properties = feature.setdefault("properties", {})
+        tags = properties.pop("tags", {})
+        if isinstance(tags, dict):
+            properties.update(tags)
+    with cache_path.open("w", encoding="utf-8") as stream:
+        json.dump(data, stream)
+    return data
+
+
+def acquire_osm_snapshot(ctx: JobContext, cache_dir: Path) -> dict[str, dict]:
+    """Fetch building, road, bridge, settlement and hospital data from before the event."""
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    snapshot_date = (date.fromisoformat(ctx.flood_date) - timedelta(days=1)).isoformat()
+    bbox = ctx.bbox
+    data = {
+        "buildings": _fetch_ohsome_features(bbox, snapshot_date, "building=* and type:way", cache_dir),
+        "roads": _fetch_ohsome_features(bbox, snapshot_date, "highway=* and type:way", cache_dir),
+        "bridges": _fetch_ohsome_features(bbox, snapshot_date, "bridge=* and type:way", cache_dir),
+        "settlements": _fetch_ohsome_features(bbox, snapshot_date, "place=* and type:node", cache_dir),
+        "hospitals": _fetch_ohsome_features(bbox, snapshot_date, "amenity=hospital or amenity=clinic", cache_dir),
+    }
+    data["snapshot_date"] = snapshot_date
+    return data
+
+
+def run_pipeline_worker(ctx: JobContext) -> bool:
+    try:
+        # ─────────────────────────────────────────────────────────────────────
+        # 1. VALIDATING
+        # ─────────────────────────────────────────────────────────────────────
+        ctx.set_state(JobState.VALIDATING, "Validating bounding box and date inputs.")
+        west, south, east, north = ctx.bbox
+        if not (-180.0 <= west < east <= 180.0 and -90.0 <= south < north <= 90.0):
+            raise ValueError(f"Invalid bounding box coordinates: {ctx.bbox}")
+        if not ctx.pre_image or not ctx.post_image:
+            raise ValueError(
+                "This worker needs caller-prepared Sentinel-1 pre/post scenes. "
+                "Raw product download and GRD calibration are not implemented."
+            )
+        if not ctx.pre_image.is_file() or not ctx.post_image.is_file():
+            raise FileNotFoundError("One or both supplied Sentinel-1 scenes do not exist.")
+        try:
+            datetime.strptime(ctx.flood_date, "%Y-%m-%d")
+        except ValueError:
+            raise ValueError(f"Invalid flood_date format '{ctx.flood_date}'; expected YYYY-MM-DD.")
+
+        # ─────────────────────────────────────────────────────────────────────
+        # 2. SEARCHING_DATA
+        # ─────────────────────────────────────────────────────────────────────
+        ctx.set_state(JobState.SEARCHING_DATA, "Discovering Sentinel-1 pair and clear-sky Sentinel-2 metadata in Copernicus STAC.")
+        from stac_search import search_sentinel_scenes
+        stac_results = search_sentinel_scenes(ctx.bbox, ctx.flood_date)
+        with (ctx.out_dir / "scene_search.json").open("w", encoding="utf-8") as stream:
+            json.dump(stac_results, stream, indent=2)
+
+        # ─────────────────────────────────────────────────────────────────────
+        # 3. DOWNLOADING
+        # ─────────────────────────────────────────────────────────────────────
+        ctx.set_state(JobState.DOWNLOADING, "Validating supplied Sentinel-1 scenes; automated download is not available.")
+        cache_dir = ctx.out_dir / "scene_cache"
+        pre_scene, post_scene = acquire_scene_pair(ctx, cache_dir)
+        print(f"  [Worker] Pre-flood scene:  {pre_scene.name}")
+        print(f"  [Worker] Post-flood scene: {post_scene.name}")
+
+        # ─────────────────────────────────────────────────────────────────────
+        # 4. PREPROCESSING
+        # ─────────────────────────────────────────────────────────────────────
+        ctx.set_state(JobState.PREPROCESSING, f"Using supplied analysis-ready VV/VH dB raster {post_scene.name}.")
+
+        # ─────────────────────────────────────────────────────────────────────
+        # 5. FLOOD_MAPPING
+        # ─────────────────────────────────────────────────────────────────────
+        ctx.set_state(JobState.FLOOD_MAPPING, "Running log-ratio baseline and U-Net model with best.pt weights.")
+        from predict import load_checkpoint, predict_one
+        import torch
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        ckpt_path = Path("checkpoints/best.pt")
+        if not ckpt_path.exists():
+            ckpt_path = Path("checkpoints/latest.pt")
+        if not ckpt_path.exists():
+            raise FileNotFoundError("No trained checkpoint found in checkpoints/ (run train.py first).")
+
+        model, mean, std, p_size, ckpt = load_checkpoint(ckpt_path, device)
+        facts = predict_one(
+            scene_path=post_scene,
+            model=model,
+            sar_mean=mean,
+            sar_std=std,
+            patch_size=p_size,
+            stride=p_size // 2,
+            device=device,
+            out_dir=ctx.out_dir,
+            ckpt_path=ckpt_path,
+            ckpt=ckpt,
+            temperature=1.0,
+            pre_scene_path=pre_scene,
+        )
+
+        flood_mask_path = ctx.out_dir / f"{post_scene.stem}_flood_predicted.tif"
+
+        # Run Debris Module on distinct pre and post scenes
+        from debris import run_debris_module
+        multi_mask_path = ctx.out_dir / f"{post_scene.stem}_multiclass_mask.tif"
+        debris_res = run_debris_module(pre_scene, post_scene, flood_mask_path, multi_mask_path)
+        facts["debris_detection"] = debris_res
+
+        # Pull debris fields to top level of facts for direct situation report rendering
+        pixel_area_m2 = facts.get("pixel_area_m2", 100.0)
+        debris_px = debris_res.get("debris_pixel_count", 0)
+        facts["debris_area_km2"] = round(float(debris_px * pixel_area_m2 / 1e6), 6)
+        facts["debris_confidence"] = debris_res.get("debris_confidence", 0.65)
+
+        # Cross-Sensor Optical Verification (Sentinel-2 clear-sky NDWI)
+        optical_pair = acquire_optical_pair(ctx, cache_dir)
+        if optical_pair:
+            from optical_analysis import process_sentinel2_scene
+            green_path, nir_path = optical_pair
+            facts["cross_sensor_optical"] = process_sentinel2_scene(
+                green_path, nir_path, flood_mask_path, ctx.out_dir / "optical"
+            )
+        else:
+            facts["cross_sensor_optical"] = {"status": "not_available", "note": "No real Sentinel-2 bands were supplied."}
+
+        # ─────────────────────────────────────────────────────────────────────
+        # 6. DAMAGE_ANALYSIS
+        # ─────────────────────────────────────────────────────────────────────
+        ctx.set_state(JobState.DAMAGE_ANALYSIS, "Assessing building, road, and bridge exposure using approved wording.")
+        from damage_analysis import analyze_damage, vectorize_flood_mask
+        flood_poly, _ = vectorize_flood_mask(flood_mask_path)
+
+        osm_data = acquire_osm_snapshot(ctx, ctx.out_dir / "osm_cache")
+        damage = analyze_damage(
+            flood_poly,
+            osm_data["buildings"],
+            osm_data["roads"],
+            osm_data["bridges"],
+        )
+        facts.update(damage)
+        facts["osm_snapshot_date"] = osm_data["snapshot_date"]
+        facts["osm_source"] = "ohsome API"
+
+        # Connectivity uses the same dated OSM snapshot as the damage estimate.
+        ctx.set_state(JobState.CONNECTIVITY_ANALYSIS, "Calculating road access using the pre-event OSM snapshot.")
+        from connectivity_analysis import analyze_connectivity, build_road_graph
+        graph, _ = build_road_graph(osm_data["roads"])
+        conn_results = analyze_connectivity(
+            flood_poly, graph, osm_data["settlements"]["features"], osm_data["hospitals"]["features"]
+        )
+        facts["settlement_counts"] = conn_results["settlement_counts"]
+        facts["settlements"] = conn_results["settlements"]
+
+        # Write unified facts.json
+        with open(ctx.facts_file, "w", encoding="utf-8") as f:
+            json.dump(facts, f, indent=2)
+
+        # ─────────────────────────────────────────────────────────────────────
+        # 8. GENERATING_REPORT
+        # ─────────────────────────────────────────────────────────────────────
+        ctx.set_state(JobState.GENERATING_REPORT, "Compiling the one-page situation report and interactive map dashboard.")
+        from generate_report import render_report
+        report_html = ctx.out_dir / "situation_report.html"
+        render_report(ctx.facts_file, report_html)
+        from generate_dashboard import render_dashboard
+        render_dashboard(
+            ctx.facts_file,
+            flood_mask_path,
+            ctx.out_dir / "dashboard.html",
+            osm_data=osm_data,
+        )
+
+        # ─────────────────────────────────────────────────────────────────────
+        # 9. COMPLETED
+        # ─────────────────────────────────────────────────────────────────────
+        ctx.set_state(JobState.COMPLETED, f"Job finished successfully. Output ready in {ctx.out_dir}")
+        return True
+
+    except Exception as exc:
+        ctx.error_message = str(exc)
+        ctx.set_state(JobState.FAILED, f"Job failed: {exc}")
+        return False
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--bbox", nargs=4, type=float, required=True, metavar=("WEST", "SOUTH", "EAST", "NORTH"))
+    p.add_argument("--flood-date", type=str, required=True, help="Flood date YYYY-MM-DD")
+    p.add_argument("--job-id", type=str, default=f"job_{int(time.time())}")
+    p.add_argument("--out-dir", type=Path, default=Path("outputs/latest_job"))
+    p.add_argument("--pre-image", type=Path, default=None, help="Custom Sentinel-1 pre-flood GeoTIFF")
+    p.add_argument("--post-image", type=Path, default=None, help="Custom Sentinel-1 post-flood GeoTIFF")
+    p.add_argument("--s2-green", type=Path, default=None, help="Custom Sentinel-2 Band 3 (Green) GeoTIFF")
+    p.add_argument("--s2-nir", type=Path, default=None, help="Custom Sentinel-2 Band 8 (NIR) GeoTIFF")
+    args = p.parse_args()
+
+    print("=" * 65)
+    print(f" FloodSight AI — Python Worker [Job: {args.job_id}]")
+    print("=" * 65)
+
+    ctx = JobContext(
+        job_id=args.job_id,
+        bbox=args.bbox,
+        flood_date=args.flood_date,
+        out_dir=args.out_dir,
+        pre_image=args.pre_image,
+        post_image=args.post_image,
+        s2_green=args.s2_green,
+        s2_nir=args.s2_nir,
+    )
+    success = run_pipeline_worker(ctx)
+    sys.exit(0 if success else 1)
+
+
+if __name__ == "__main__":
+    main()

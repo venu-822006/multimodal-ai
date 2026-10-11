@@ -1,0 +1,30 @@
+{
+  "case_study": "August 2026 Trishuli Flood, Nepal (Bhote Koshi Corridor)",
+  "reference_source": "European Union, Copernicus Emergency Management Service data (EMSR927)",
+  "metrics": {
+    "flood_iou": 0.0264,
+    "f1_score": 0.0515,
+    "precision": 0.0291,
+    "recall": 0.2211,
+    "pixel_accuracy": 0.7751
+  },
+  "area_comparison": {
+    "model_predicted_flood_km2": 240.1854,
+    "emsr927_reference_flood_km2": 31.6388,
+    "area_delta_km2": 208.5466,
+    "area_agreement_pct": 13.17
+  },
+  "confusion_matrix_pixels": {
+    "true_positive": 400,
+    "false_positive": 13333,
+    "false_negative": 1409,
+    "true_negative": 50394,
+    "total_valid_pixels": 65536
+  },
+  "honesty_about_limitations": {
+    "steep_slope_radar_layover_fp": 0,
+    "topographic_challenge": "Deep Himalayan gorges create radar shadow on slopes facing away from the satellite, and layover on steep slopes facing the radar. Ground water extent in gorge floors is under-detected without multi-track descending/ascending orbit fusion.",
+    "revisit_time_latency": "Sentinel-1 has a 12-day exact repeat orbit over the Trishuli corridor. Radar cannot warn of glacial lake outburst floods minutes before arrival; it serves rapid damage assessment 1-2 days post-event."
+  },
+  "mandatory_attribution": "Produced using Copernicus Sentinel data 2026. Evaluated against European Union, Copernicus Emergency Management Service data (EMSR927)."
+}

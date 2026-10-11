@@ -1,0 +1,106 @@
+{
+  "flood_area_km2": 240.185424,
+  "flood_pixel_count": 13733,
+  "total_valid_pixels": 65536,
+  "flood_fraction": 0.209549,
+  "bbox": [
+    85.15,
+    27.9,
+    85.45,
+    28.25
+  ],
+  "crs": "EPSG:4326",
+  "pixel_area_m2": 17489.65,
+  "pixel_resolution_approx_m": 132.25,
+  "model_config": {
+    "in_channels": 2,
+    "classes": 2,
+    "base_channels": 24
+  },
+  "normalization": {
+    "mean_db": [
+      -10.03161334991455,
+      -16.04305648803711
+    ],
+    "std_db": [
+      3.6682446002960205,
+      4.359753131866455
+    ]
+  },
+  "checkpoint": "best.pt",
+  "val_flood_iou": 0.327586622139035,
+  "epoch": 6,
+  "anti_hallucination_metrics": {
+    "confidence_threshold_used": 0.55,
+    "min_cluster_px_used": 20,
+    "raw_candidates": 13733,
+    "slope_hallucinations_filtered": 0,
+    "temporal_false_positives_filtered": 0,
+    "speckle_noise_pixels_filtered": 0,
+    "verified_flood_pixels": 13733,
+    "noise_reduction_pct": 0.0
+  },
+  "debris_detection": {
+    "flood_pixel_count": 13733,
+    "debris_pixel_count": 2597,
+    "total_valid_pixels": 65536,
+    "debris_confidence": 0.75,
+    "classes": {
+      "0": "Background",
+      "1": "Class A: Flood/Inundation (core)",
+      "2": "Class B: Possible debris/surface change (experimental)"
+    }
+  },
+  "debris_area_km2": 0.2597,
+  "debris_confidence": 0.75,
+  "cross_sensor_optical": {
+    "ndwi_raster": "outputs\\trishuli_case_study\\optical\\trishuli_case_study_s2_b03_green_ndwi.tif",
+    "mean_ndwi": -0.3985,
+    "cloud_fraction": 0.0307,
+    "cross_sensor_validation": {
+      "clear_sky_valid_pixels": 63523,
+      "dual_confirmed_water_pixels": 10880,
+      "radar_only_water_pixels": 2421,
+      "optical_only_water_pixels": 0,
+      "cross_sensor_agreement_pct": 81.8,
+      "optical_confidence_boost": "HIGH"
+    }
+  },
+  "buildings_affected": 0,
+  "buildings_affected_confidence": 0.85,
+  "road_length_affected_km": 6.44,
+  "bridges_affected": 0,
+  "bridges_affected_confidence": 0.77,
+  "wording_standard": "Reported counts represent structures/roads affected or potentially affected by mapped inundation.",
+  "settlement_counts": {
+    "CONNECTED": 2,
+    "CUT_OFF": 2,
+    "UNKNOWN": 0
+  },
+  "settlements": [
+    {
+      "settlement": "Betrawati Riverside Village",
+      "state": "CONNECTED",
+      "target": "Trishuli District Hospital",
+      "pre_distance_km": 3.15
+    },
+    {
+      "settlement": "Ramche Settlement",
+      "state": "CONNECTED",
+      "target": "Trishuli District Hospital",
+      "pre_distance_km": 15.51
+    },
+    {
+      "settlement": "Dhunche Town",
+      "state": "CUT_OFF",
+      "target": "Trishuli District Hospital",
+      "pre_distance_km": 26.01
+    },
+    {
+      "settlement": "Syaphrubesi Corridor",
+      "state": "CUT_OFF",
+      "target": "Trishuli District Hospital",
+      "pre_distance_km": 33.1
+    }
+  ]
+}
