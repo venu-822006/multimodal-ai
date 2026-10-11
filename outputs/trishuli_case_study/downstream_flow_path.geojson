@@ -1,0 +1,39 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            85.443555,
+            27.963574
+          ],
+          [
+            85.444727,
+            27.964941
+          ],
+          [
+            85.445898,
+            27.964941
+          ],
+          [
+            85.44707,
+            27.966309
+          ],
+          [
+            85.448242,
+            27.964941
+          ]
+        ]
+      },
+      "properties": {
+        "hazard": "Downstream Flood Propagation Path",
+        "length_km": 0.73,
+        "elevation_drop_m": 159.9,
+        "gradient_m_per_km": 219.0
+      }
+    }
+  ]
+}

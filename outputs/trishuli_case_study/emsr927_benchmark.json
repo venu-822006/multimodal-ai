@@ -1,30 +1,28 @@
 {
-  "case_study": "August 2026 Trishuli Flood, Nepal (Bhote Koshi Corridor)",
-  "reference_source": "European Union, Copernicus Emergency Management Service data (EMSR927)",
   "metrics": {
-    "flood_iou": 0.0264,
-    "f1_score": 0.0515,
-    "precision": 0.0291,
-    "recall": 0.2211,
-    "pixel_accuracy": 0.7751
+    "flood_iou": 0.455638,
+    "f1_score": 0.626032,
+    "precision": 0.555616,
+    "recall": 0.716886,
+    "pixel_accuracy": 0.906662
   },
-  "area_comparison": {
-    "model_predicted_flood_km2": 240.1854,
-    "emsr927_reference_flood_km2": 31.6388,
-    "area_delta_km2": 208.5466,
-    "area_agreement_pct": 13.17
+  "area_comparison_km2": {
+    "prediction": 161.150083,
+    "reference": 124.897906,
+    "difference_prediction_minus_reference": 36.252177
   },
   "confusion_matrix_pixels": {
-    "true_positive": 400,
-    "false_positive": 13333,
-    "false_negative": 1409,
-    "true_negative": 50394,
-    "total_valid_pixels": 65536
+    "true_positive": 5120,
+    "false_positive": 4095,
+    "false_negative": 2022,
+    "true_negative": 54299,
+    "valid_pixels": 65536
   },
-  "honesty_about_limitations": {
-    "steep_slope_radar_layover_fp": 0,
-    "topographic_challenge": "Deep Himalayan gorges create radar shadow on slopes facing away from the satellite, and layover on steep slopes facing the radar. Ground water extent in gorge floors is under-detected without multi-track descending/ascending orbit fusion.",
-    "revisit_time_latency": "Sentinel-1 has a 12-day exact repeat orbit over the Trishuli corridor. Radar cannot warn of glacial lake outburst floods minutes before arrival; it serves rapid damage assessment 1-2 days post-event."
-  },
-  "mandatory_attribution": "Produced using Copernicus Sentinel data 2026. Evaluated against European Union, Copernicus Emergency Management Service data (EMSR927)."
+  "case_study": "August 2026 Trishuli flood (Bhote Koshi / Trishuli corridor)",
+  "prediction_file": "outputs\\trishuli_case_study\\trishuli_case_study_post_flood_predicted.tif",
+  "reference_file": "data\\evaluation_only\\emsr927_reference.tif",
+  "reference_source": "Copernicus Emergency Management Service (EMSR927)",
+  "evaluation_only": true,
+  "nodata_policy": "Only pixels valid in both masks are scored.",
+  "mandatory_attribution": "Contains modified Copernicus Sentinel data 2026. Evaluated against European Union, Copernicus Emergency Management Service data (EMSR927)."
 }

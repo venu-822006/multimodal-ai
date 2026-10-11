@@ -138,8 +138,8 @@
     <div class="subtitle">Rapid Spaceborne Flood Damage Assessment | Track B: Multimodal AI Hackathon 2026</div>
   </div>
   <div class="meta-box">
-    <div><strong>Report ID:</strong> FS-05140</div>
-    <div><strong>Generated:</strong> 2026-10-07 07:41 UTC</div>
+    <div><strong>Report ID:</strong> FS-64403</div>
+    <div><strong>Generated:</strong> 2026-10-11 15:38 UTC</div>
     <div><strong>Model Checkpoint:</strong> best.pt</div>
   </div>
 </div>
@@ -147,13 +147,13 @@
 <div class="grid">
   <div class="card">
     <div class="card-title">1. Flood Inundation Area</div>
-    <div class="card-stat">240.19 km²</div>
-    <div class="card-subtext">13,733 flooded pixels (20.95% of area)</div>
+    <div class="card-stat">161.17 km²</div>
+    <div class="card-subtext">9,215 flooded pixels (14.06% of area)</div>
   </div>
   <div class="card">
     <div class="card-title">2. Buildings Potentially Affected</div>
     <div class="card-stat">0</div>
-    <div class="card-subtext">6.44 km roads | 0 bridges</div>
+    <div class="card-subtext">3.97 km roads | 0 bridges</div>
   </div>
   <div class="card">
     <div class="card-title">3. Cut-Off Settlements</div>
@@ -170,19 +170,23 @@
   </div>
   <div class="stat-row">
     <span><strong>Spatial Resolution:</strong></span>
-    <span>10.0 m / pixel (Sentinel-1 SAR IW)</span>
+    <span>132.25 m / pixel (Sentinel-1 SAR IW)</span>
   </div>
   <div class="stat-row">
     <span><strong>Primary Mapped Inundation (Class A):</strong></span>
-    <span>240.19 km²</span>
+    <span>161.17 km²</span>
   </div>
   <div class="stat-row">
     <span><strong>Debris / Surface Change Candidate (Class B - Experimental):</strong></span>
-    <span>0.26 km² (Confidence: 0.75)</span>
+    <span>89.51 km² (heuristic score, not calibrated: 0.75)</span>
+  </div>
+  <div class="stat-row">
+    <span><strong>Downstream Flood Propagation (Copernicus WorldDEM-30 D8):</strong></span>
+    <span>0.73 km (elevation drop: 159.9 m, hydraulic gradient: 219.0 m/km)</span>
   </div>
   <div class="stat-row">
     <span><strong>Segmentation Model:</strong></span>
-    <span>U-Net (Scratch-initialized, ResNet18-class backbone, dual-pol SAR VV/VH)</span>
+    <span>U-Net (dual-polarization SAR VV/VH segmentation)</span>
   </div>
 </div>
 
@@ -194,11 +198,11 @@
   </div>
   <div class="stat-row">
     <span><strong>Road Network Inundated:</strong></span>
-    <span><strong>6.44 km</strong> of road segments intersecting flood mask</span>
+    <span><strong>3.97 km</strong> of road segments intersecting flood mask</span>
   </div>
   <div class="stat-row">
     <span><strong>Bridges Impacted:</strong></span>
-    <span><strong>0</strong> bridges within inundation zone (Confidence: 0.77)</span>
+    <span><strong>0</strong> bridges within inundation zone (OSM snapshot)</span>
   </div>
   <div style="font-size: 10px; color: #6b7280; margin-top: 6px; font-style: italic;">
     * In accordance with operational standards, exposure numbers represent features affected or potentially affected by mapped inundation.
@@ -219,27 +223,27 @@
     <tbody>
       <tr>
               <td><strong>Betrawati Riverside Village</strong></td>
-              <td><span class="badge badge-success">CONNECTED</span></td>
-              <td>Trishuli District Hospital</td>
-              <td>3.15 km</td>
+              <td><span class="badge badge-danger">CUT_OFF</span></td>
+              <td>Dhunche Health Post</td>
+              <td>17.22 km</td>
             </tr>
 <tr>
               <td><strong>Ramche Settlement</strong></td>
-              <td><span class="badge badge-success">CONNECTED</span></td>
-              <td>Trishuli District Hospital</td>
-              <td>15.51 km</td>
+              <td><span class="badge badge-danger">CUT_OFF</span></td>
+              <td>Dhunche Health Post</td>
+              <td>8.9 km</td>
             </tr>
 <tr>
               <td><strong>Dhunche Town</strong></td>
-              <td><span class="badge badge-danger">CUT_OFF</span></td>
-              <td>Trishuli District Hospital</td>
-              <td>26.01 km</td>
+              <td><span class="badge badge-success">CONNECTED</span></td>
+              <td>Dhunche Health Post</td>
+              <td>0 km</td>
             </tr>
 <tr>
               <td><strong>Syaphrubesi Corridor</strong></td>
-              <td><span class="badge badge-danger">CUT_OFF</span></td>
-              <td>Trishuli District Hospital</td>
-              <td>33.1 km</td>
+              <td><span class="badge badge-success">CONNECTED</span></td>
+              <td>Dhunche Health Post</td>
+              <td>7.74 km</td>
             </tr>
     </tbody>
   </table>
@@ -249,8 +253,8 @@
 </div>
 
 <div class="footer">
-  <strong>Data Sources & Mandatory Attributions:</strong><br>
-  Contains modified Copernicus Sentinel data 2026. | Produced using Copernicus WorldDEM-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved. | © OpenStreetMap contributors. | Training dataset citation: Bountos et al., 2024 for Kuro Siwo (CC BY / MIT).
+  <strong>Data Sources & Attributions:</strong><br>
+  Contains modified Copernicus Sentinel data 2026. | © OpenStreetMap contributors (pre-event snapshot: 2026-08-25). | Training dataset citation: Bountos et al., 2024 for Kuro Siwo. | Elevation model: Copernicus WorldDEM-30.
 </div>
 
 </body>
