@@ -45,6 +45,13 @@ scene_cache/
 outputs/**/scene_cache/
 outputs/**/*.tif
 outputs/**/*.tiff
+outputs/held_out_eval/*_facts.json
+outputs/held_out_eval/*_flood_predicted.tif
+outputs/himalayan_eval/*_facts.json
+outputs/himalayan_eval/*_flood_predicted.tif
+outputs/current_heldout_eval/
+outputs/**/osm_cache/
+checkpoints/*_previous_*.csv
 
 # Large Model Checkpoints & Weights
 *.pt

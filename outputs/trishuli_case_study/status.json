@@ -8,17 +8,42 @@
   ],
   "flood_date": "2026-08-26",
   "current_state": "FAILED",
-  "error_message": "This worker needs caller-prepared Sentinel-1 pre/post scenes. Raw product download and GRD calibration are not implemented.",
+  "error_message": "'rasterio.crs.CRS' object has no attribute 'get_geod'",
   "history": [
     {
       "state": "VALIDATING",
-      "timestamp": "2026-10-11T08:55:15.607414Z",
+      "timestamp": "2026-10-11T09:49:51.601083Z",
       "detail": "Validating bounding box and date inputs."
     },
     {
+      "state": "SEARCHING_DATA",
+      "timestamp": "2026-10-11T09:49:51.606887Z",
+      "detail": "Discovering Sentinel-1 pair and clear-sky Sentinel-2 metadata in Copernicus STAC."
+    },
+    {
+      "state": "DOWNLOADING",
+      "timestamp": "2026-10-11T09:49:54.232276Z",
+      "detail": "Acquiring georeferenced pre- and post-flood scenes for target coordinates."
+    },
+    {
+      "state": "PREPROCESSING",
+      "timestamp": "2026-10-11T09:49:54.234279Z",
+      "detail": "Radiometric calibration, dB scaling, and speckle filtering on trishuli_case_study_post.tif."
+    },
+    {
+      "state": "FLOOD_MAPPING",
+      "timestamp": "2026-10-11T09:49:54.235279Z",
+      "detail": "Running log-ratio baseline and U-Net model with best.pt weights."
+    },
+    {
+      "state": "DAMAGE_ANALYSIS",
+      "timestamp": "2026-10-11T09:49:58.423127Z",
+      "detail": "Assessing building, road, and bridge exposure using approved wording."
+    },
+    {
       "state": "FAILED",
-      "timestamp": "2026-10-11T08:55:15.609417Z",
-      "detail": "Job failed: This worker needs caller-prepared Sentinel-1 pre/post scenes. Raw product download and GRD calibration are not implemented."
+      "timestamp": "2026-10-11T09:50:03.846400Z",
+      "detail": "Job failed: 'rasterio.crs.CRS' object has no attribute 'get_geod'"
     }
   ]
 }

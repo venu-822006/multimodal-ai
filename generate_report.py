@@ -219,6 +219,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <span>{{DEBRIS_AREA_KM2}} km² (heuristic score, not calibrated: {{DEBRIS_CONFIDENCE}})</span>
   </div>
   <div class="stat-row">
+    <span><strong>Downstream Flood Propagation (Copernicus WorldDEM-30 D8):</strong></span>
+    <span>{{DEM_FLOW_INFO}}</span>
+  </div>
+  <div class="stat-row">
     <span><strong>Segmentation Model:</strong></span>
     <span>U-Net (dual-polarization SAR VV/VH segmentation)</span>
   </div>
@@ -265,7 +269,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
 <div class="footer">
   <strong>Data Sources & Attributions:</strong><br>
-  Contains modified Copernicus Sentinel data 2026. | © OpenStreetMap contributors (pre-event snapshot: {{OSM_SNAPSHOT_DATE}}). | Training dataset citation: Bountos et al., 2024 for Kuro Siwo. Copernicus WorldDEM-30 was not used in this run.
+  Contains modified Copernicus Sentinel data 2026. | © OpenStreetMap contributors (pre-event snapshot: {{OSM_SNAPSHOT_DATE}}). | Training dataset citation: Bountos et al., 2024 for Kuro Siwo. | Elevation model: Copernicus WorldDEM-30.
 </div>
 
 </body>
@@ -323,6 +327,13 @@ def render_report(facts_path: Path, out_html_path: Path, out_pdf_path: Path = No
           </td>
         </tr>"""
 
+    dem_info = data.get("dem_flow_analysis", {})
+    dem_len = dem_info.get("downstream_length_km")
+    if dem_len is not None and dem_len > 0:
+        dem_flow_text = f"{dem_len} km (elevation drop: {dem_info.get('elevation_drop_m', 0)} m, hydraulic gradient: {dem_info.get('hydraulic_gradient_m_per_km', 0)} m/km)"
+    else:
+        dem_flow_text = "No downstream propagation path traced"
+
     html = HTML_TEMPLATE
     replacements = {
         "{{REPORT_ID}}": report_id,
@@ -335,6 +346,7 @@ def render_report(facts_path: Path, out_html_path: Path, out_pdf_path: Path = No
         "{{RESOLUTION}}": str(res) if res is not None else "not available",
         "{{DEBRIS_AREA_KM2}}": f"{debris_area:.2f}" if isinstance(debris_area, (int, float)) else "not available",
         "{{DEBRIS_CONFIDENCE}}": str(debris_conf),
+        "{{DEM_FLOW_INFO}}": dem_flow_text,
         "{{BUILDINGS_AFFECTED}}": str(bldgs) if bldgs is not None else "not available",
         "{{ROAD_KM_AFFECTED}}": f"{roads_km:.2f}" if isinstance(roads_km, (int, float)) else "not available",
         "{{BRIDGES_AFFECTED}}": str(bridges) if bridges is not None else "not available",

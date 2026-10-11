@@ -48,18 +48,42 @@ def render_dashboard(facts_path: Path, flood_mask_path: Path, out_path: Path, os
     bbox = facts.get("bbox", [85.1, 27.8, 85.5, 28.1])
     center = [(bbox[1] + bbox[3]) / 2, (bbox[0] + bbox[2]) / 2]
 
+    dem_data = facts.get("dem_flow_analysis", {})
+    flow_coords = dem_data.get("flow_path_coords", [])
+    if len(flow_coords) >= 2:
+        flow_path_geojson = {
+            "type": "FeatureCollection",
+            "features": [{
+                "type": "Feature",
+                "geometry": {"type": "LineString", "coordinates": flow_coords},
+                "properties": {
+                    "hazard": "Downstream Flood Propagation Path",
+                    "length_km": dem_data.get("downstream_length_km", 0.0),
+                    "elevation_drop_m": dem_data.get("elevation_drop_m", 0.0),
+                    "gradient_m_per_km": dem_data.get("hydraulic_gradient_m_per_km", 0.0),
+                }
+            }]
+        }
+    else:
+        flow_path_geojson = {"type": "FeatureCollection", "features": []}
+
     cards = {
         "Flood area": f"{facts.get('flood_area_km2', 'N/A')} km²",
         "Buildings potentially affected": facts.get("buildings_affected", "N/A"),
         "Road length intersecting flood": f"{facts.get('road_length_affected_km', 'N/A')} km",
         "Settlements cut off": facts.get("settlement_counts", {}).get("CUT_OFF", "N/A"),
     }
+    dem_km = dem_data.get("downstream_length_km")
+    if dem_km is not None and dem_km > 0:
+        cards["Downstream propagation (DEM)"] = f"{dem_km} km ({dem_data.get('elevation_drop_m', 0)}m drop)"
+
     card_html = "".join(
         f'<article><span>{html.escape(str(label))}</span><strong>{html.escape(str(value))}</strong></article>'
         for label, value in cards.items()
     )
     attribution = (
         "Contains modified Copernicus Sentinel data 2026. "
+        "Copernicus WorldDEM-30 30m elevation model. "
         f"© OpenStreetMap contributors (pre-event snapshot: {facts.get('osm_snapshot_date', 'not recorded')}). "
         "Educational prototype; verify every layer before operational use."
     )
@@ -70,14 +94,14 @@ def render_dashboard(facts_path: Path, flood_mask_path: Path, out_path: Path, os
 <style>
 *{box-sizing:border-box}body{margin:0;background:#f3f6fb;color:#14213d;font:15px system-ui,Segoe UI,sans-serif}
 header{padding:18px 24px;background:#102a43;color:white}header h1{margin:0;font-size:22px}header p{margin:4px 0 0;color:#d9e7f2}
-.cards{display:grid;grid-template-columns:repeat(4,minmax(140px,1fr));gap:12px;padding:14px 18px}.cards article{background:white;border-radius:10px;padding:12px 14px;box-shadow:0 2px 8px #102a4314}.cards span{display:block;color:#526477;font-size:12px}.cards strong{display:block;margin-top:5px;font-size:19px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;padding:14px 18px}.cards article{background:white;border-radius:10px;padding:12px 14px;box-shadow:0 2px 8px #102a4314}.cards span{display:block;color:#526477;font-size:12px}.cards strong{display:block;margin-top:5px;font-size:19px}
 #map{height:calc(100vh - 220px);min-height:420px;margin:0 18px;border-radius:10px;box-shadow:0 3px 14px #102a4320}.note{padding:12px 22px;color:#526477;font-size:12px}
 @media(max-width:700px){.cards{grid-template-columns:repeat(2,1fr)}#map{height:65vh;margin:0 10px}header{padding:16px}}
 </style></head><body><header><h1>FloodSight · Event map</h1><p>Satellite flood extent, pre-event roads, and settlement access status</p></header>
 <section class="cards">__CARDS__</section><div id="map" role="application" aria-label="Interactive flood extent map"></div>
 <p class="note">__ATTRIBUTION__ Base-map tiles require an internet connection. Mapped inundation and OSM intersections indicate exposure; they do not confirm physical damage. Sentinel revisit timing, terrain shadow, OSM coverage, and model uncertainty apply.</p>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script>
-const flood=__FLOOD__, roads=__ROADS__, hospitals=__HOSPITALS__, settlements=__SETTLEMENTS__;
+const flood=__FLOOD__, roads=__ROADS__, hospitals=__HOSPITALS__, settlements=__SETTLEMENTS__, flowPath=__FLOW_PATH__;
 const map=L.map('map').setView(__CENTER__,9);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(map);
 const floodLayer=L.geoJSON(flood,{style:{color:'#c2410c',weight:1,fillColor:'#f97316',fillOpacity:.5},onEachFeature:(f,l)=>l.bindPopup('Mapped inundation')}).addTo(map);
@@ -85,7 +109,9 @@ const roadLayer=L.geoJSON(roads,{style:{color:'#64748b',weight:2,opacity:.8},onE
 const hospitalLayer=L.geoJSON(hospitals,{pointToLayer:(f,latlng)=>L.circleMarker(latlng,{radius:6,color:'#2563eb',fillOpacity:.9}),onEachFeature:(f,l)=>l.bindPopup('Medical facility: '+escapeHtml((f.properties&&f.properties.name)||'Unnamed'))});
 const colors={CUT_OFF:'#dc2626',CONNECTED:'#16a34a',UNKNOWN:'#64748b'};
 const settlementLayer=L.layerGroup(settlements.filter(s=>Number.isFinite(s.longitude)&&Number.isFinite(s.latitude)).map(s=>L.circleMarker([s.latitude,s.longitude],{radius:6,color:colors[s.state]||colors.UNKNOWN,fillOpacity:.9}).bindPopup('<b>'+escapeHtml(s.settlement||'Unnamed settlement')+'</b><br>Status: '+escapeHtml(s.state||'UNKNOWN')+(s.target?'<br>Target: '+escapeHtml(s.target):'')+(s.reason?'<br>'+escapeHtml(s.reason):''))));
-L.control.layers(null,{'Mapped inundation':floodLayer,'Pre-event roads':roadLayer,'Settlements':settlementLayer,'Medical facilities':hospitalLayer},{collapsed:false}).addTo(map);
+const flowPathLayer=L.geoJSON(flowPath,{style:{color:'#0284c7',weight:4,dashArray:'6, 6'},onEachFeature:(f,l)=>l.bindPopup('<b>Downstream Flood Propagation Path (Copernicus DEM)</b><br>Length: '+(f.properties?.length_km||0)+' km<br>Elevation drop: '+(f.properties?.elevation_drop_m||0)+' m<br>Gradient: '+(f.properties?.gradient_m_per_km||0)+' m/km')});
+if(flowPath.features&&flowPath.features.length>0){flowPathLayer.addTo(map);}
+L.control.layers(null,{'Mapped inundation':floodLayer,'Pre-event roads':roadLayer,'Settlements':settlementLayer,'Medical facilities':hospitalLayer,'Downstream propagation (DEM)':flowPathLayer},{collapsed:false}).addTo(map);
 map.fitBounds([[__BBOX__[1],__BBOX__[0]],[__BBOX__[3],__BBOX__[2]]]);
 function escapeHtml(x){return String(x).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 </script></body></html>'''
@@ -95,6 +121,7 @@ function escapeHtml(x){return String(x).replace(/[&<>"']/g,c=>({'&':'&amp;','<':
         .replace("__ROADS__", _safe_json(roads))
         .replace("__HOSPITALS__", _safe_json(hospitals))
         .replace("__SETTLEMENTS__", _safe_json(settlements))
+        .replace("__FLOW_PATH__", _safe_json(flow_path_geojson))
         .replace("__CENTER__", _safe_json(center))
         .replace("__BBOX__", _safe_json(bbox)))
     out_path.parent.mkdir(parents=True, exist_ok=True)

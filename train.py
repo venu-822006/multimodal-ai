@@ -138,7 +138,10 @@ def split_by_event(pairs: list[tuple[Path, Path]], val_fraction: float, seed: in
     return train_pairs, val_pairs, train_keys, val_keys
 
 
-def make_loader(pairs, patch_size, batch_size, training, workers, device, samples_per_image: int = 1):
+def make_loader(
+    pairs, patch_size, batch_size, training, workers, device,
+    samples_per_image: int = 1, sar_mean=None, sar_std=None,
+):
     images = [str(pair[0]) for pair in pairs]
     masks = [str(pair[1]) for pair in pairs]
     transform = get_train_transforms(patch_size) if training else get_val_transforms(patch_size)
@@ -150,6 +153,8 @@ def make_loader(pairs, patch_size, batch_size, training, workers, device, sample
         use_rasterio=True,
         samples_per_image=samples_per_image if training else 1,
         grid_crops=not training,
+        sar_mean=sar_mean,
+        sar_std=sar_std,
     )
     return DataLoader(
         dataset,
@@ -382,8 +387,14 @@ def train():
     set_sar_stats(sar_mean, sar_std)
     print(f"Training SAR stats (VV, VH): mean={sar_mean.tolist()}, std={sar_std.tolist()}")
 
-    train_loader = make_loader(train_pairs, args.patch_size, args.batch_size, True,  args.workers, device, args.samples_per_image)
-    val_loader   = make_loader(val_pairs,   args.patch_size, args.batch_size, False, args.workers, device, 1)
+    train_loader = make_loader(
+        train_pairs, args.patch_size, args.batch_size, True, args.workers, device,
+        args.samples_per_image, sar_mean, sar_std,
+    )
+    val_loader = make_loader(
+        val_pairs, args.patch_size, args.batch_size, False, args.workers, device,
+        1, sar_mean, sar_std,
+    )
 
     model = create_unet_model(in_channels=2, classes=2, base_channels=24).to(device)
 
@@ -407,6 +418,12 @@ def train():
     best_iou    = -1.0
     epochs_without_improvement = 0
     if args.resume and args.resume.exists():
+        ckpt = torch.load(args.resume, map_location=device, weights_only=False)
+        if ckpt.get("input_normalization_version") != 2:
+            raise ValueError(
+                "Resume checkpoint predates explicit normalization in data-loader workers. "
+                "Start a fresh run so training and inference use the same SAR statistics."
+            )
         saved_train = ckpt.get("train_events")
         saved_val = ckpt.get("val_events")
         if not saved_train or not saved_val:
@@ -427,6 +444,7 @@ def train():
             ("flood_weight", args.flood_weight),
             ("batch_size", args.batch_size),
             ("val_fraction", args.val_fraction),
+            ("samples_per_image", args.samples_per_image),
         ):
             if key in saved_config and saved_config[key] != current_value:
                 raise ValueError(
@@ -571,6 +589,7 @@ def train():
                 "scheduler_state_dict": scheduler.state_dict(),
                 "scaler_state_dict":    scaler.state_dict(),
                 "model_config":         {"in_channels": 2, "classes": 2, "base_channels": 24},
+                "input_normalization_version": 2,
                 "normalization":        {"mean_db": sar_mean.tolist(), "std_db": sar_std.tolist()},
                 "patch_size":           args.patch_size,
                 "seed":                 args.seed,
@@ -580,6 +599,7 @@ def train():
                     "batch_size": args.batch_size,
                     "val_fraction": args.val_fraction,
                     "patience": args.patience,
+                    "samples_per_image": args.samples_per_image,
                 },
                 "dataset_fingerprint":  dataset_fingerprint,
                 "val_flood_iou":        val_metrics["flood_iou"],

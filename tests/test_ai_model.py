@@ -225,3 +225,38 @@ def test_debris_module_rejects_identical_images(tmp_path):
             out_mask_path=out_path,
         )
 
+
+def test_dem_downstream_flow_path_tracing():
+    """Verify Copernicus DEM D8 downstream flow routing traces downhill propagation."""
+    from dem_flow_analysis import (
+        generate_synthetic_copernicus_dem,
+        trace_downstream_flood_path,
+        analyze_downstream_exposure,
+    )
+
+    bbox = [85.15, 27.90, 85.45, 28.25]
+    dem, transform, crs = generate_synthetic_copernicus_dem(bbox, shape=(100, 100))
+    assert dem.shape == (100, 100)
+    assert dem.max() > dem.min()
+
+    # Flood inundation cluster in upper northern gorge
+    flood_mask = np.zeros((100, 100), dtype=np.uint8)
+    flood_mask[10:15, 30:35] = 1
+
+    results = trace_downstream_flood_path(flood_mask, dem, transform)
+    assert results["status"] == "SUCCESS"
+    assert results["downstream_length_km"] > 0
+    assert results["elevation_drop_m"] >= 0
+    assert len(results["flow_path_coords"]) > 1
+
+    # Intersect with sample settlement
+    flow_coords = results["flow_path_coords"]
+    sample_pt = flow_coords[len(flow_coords) // 2]
+    settlements = [{
+        "geometry": {"type": "Point", "coordinates": sample_pt},
+        "properties": {"name": "Downstream Village"},
+    }]
+    exposed = analyze_downstream_exposure(flow_coords, settlements)
+    assert len(exposed) == 1
+    assert exposed[0]["name"] == "Downstream Village"
+

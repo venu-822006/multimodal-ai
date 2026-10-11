@@ -99,16 +99,24 @@ def get_val_transforms(patch_size: int = 256) -> A.Compose:
     ])
 
 
-def normalise_sar(image: np.ndarray) -> np.ndarray:
+def normalise_sar(
+    image: np.ndarray,
+    mean: np.ndarray | None = None,
+    std: np.ndarray | None = None,
+) -> np.ndarray:
     """
     Z-score normalise a (H, W, 2) SAR image using pre-computed global stats.
     Clips extreme dB values first to reduce the effect of outliers.
     """
-    # Clip to ±3σ before normalising
-    low  = SAR_MEAN - 3 * SAR_STD
-    high = SAR_MEAN + 3 * SAR_STD
+    mean = SAR_MEAN if mean is None else np.asarray(mean, dtype=np.float32)
+    std = SAR_STD if std is None else np.asarray(std, dtype=np.float32)
+    if mean.shape != (2,) or std.shape != (2,) or np.any(std <= 0):
+        raise ValueError("SAR mean/std must each contain two values and std must be positive")
+    # Clip to ±3σ before normalising.
+    low = mean - 3 * std
+    high = mean + 3 * std
     image = np.clip(image, low, high)
-    return (image - SAR_MEAN) / (SAR_STD + 1e-6)
+    return (image - mean) / (std + 1e-6)
 
 
 class KuroSiwoDataset(Dataset):
@@ -143,6 +151,8 @@ class KuroSiwoDataset(Dataset):
         use_rasterio: bool = True,
         samples_per_image: int = 1,
         grid_crops: bool = False,
+        sar_mean: np.ndarray | None = None,
+        sar_std: np.ndarray | None = None,
     ):
         if not image_paths:
             raise ValueError("image_paths must not be empty")
@@ -156,6 +166,11 @@ class KuroSiwoDataset(Dataset):
         self.patch_size   = patch_size
         self.transforms   = transforms
         self.use_rasterio = use_rasterio
+        self.sar_mean = np.asarray(SAR_MEAN if sar_mean is None else sar_mean, dtype=np.float32)
+        self.sar_std = np.asarray(SAR_STD if sar_std is None else sar_std, dtype=np.float32)
+        if (self.sar_mean.shape != (2,) or self.sar_std.shape != (2,)
+                or np.any(self.sar_std <= 0)):
+            raise ValueError("SAR mean/std must each contain two values and std must be positive")
         if samples_per_image < 1:
             raise ValueError("samples_per_image must be positive")
         self.samples_per_image = samples_per_image
@@ -194,13 +209,13 @@ class KuroSiwoDataset(Dataset):
 
         # Fill masked / nodata areas with band mean so augmentation doesn't blow up
         if hasattr(data, "filled"):
-            fill_vals = SAR_MEAN[:, None, None]   # broadcast to (C, 1, 1)
+            fill_vals = self.sar_mean[:, None, None]   # broadcast to (C, 1, 1)
             data = data.filled(fill_vals)
         else:
             data = np.array(data, dtype=np.float32)
             if nodata is not None:
                 for c in range(data.shape[0]):
-                    data[c][data[c] == nodata] = SAR_MEAN[c]
+                    data[c][data[c] == nodata] = self.sar_mean[c]
 
         # Transpose to (H, W, C) for Albumentations
         return np.transpose(data, (1, 2, 0))    # → (H, W, 2)
@@ -245,7 +260,7 @@ class KuroSiwoDataset(Dataset):
                 f"Image and mask dimensions differ for {self.image_paths[image_index]}: "
                 f"{image.shape[:2]} vs {mask.shape}"
             )
-        image = normalise_sar(image)                                  # (H, W, 2)
+        image = normalise_sar(image, self.sar_mean, self.sar_std)      # (H, W, 2)
 
         # Keep tiny scenes usable by crop-based transforms without inventing
         # valid labels: padded mask pixels are ignored by the loss.

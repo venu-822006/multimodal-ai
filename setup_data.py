@@ -8,8 +8,8 @@ the raw 224x224 patch folders into analysis-ready 2-band GeoTIFFs
 Raw patch folder layout (from KuroSiwo GRD dataset):
     <batch>/
         <act_id>/<aoi_id>/<patch_id>/
-            MS1_IVV*.tif   <-- post-flood VV amplitude (uint16, linear)
-            MS1_IVH*.tif   <-- post-flood VH amplitude (uint16, linear)
+            MS1_IVV*.tif   <-- expected post-flood VV calibrated Sigma0 backscatter (linear power)
+            MS1_IVH*.tif   <-- expected post-flood VH calibrated Sigma0 backscatter (linear power)
             MK0_MLU*.tif   <-- flood label  (0=bg/perm-water, 1=flood)
             MK0_MNA*.tif   <-- valid pixel mask (1=valid, 0=nodata)
 
@@ -131,8 +131,10 @@ def extract_tar(tar_path: Path, dest_dir: Path) -> None:
 # SAR helpers
 # ---------------------------------------------------------------------------
 def linear_to_db(arr: np.ndarray) -> np.ndarray:
-    """Convert uint16 linear amplitude to dB, clip to valid SAR range."""
+    """Convert calibrated linear Sigma0 power to dB and clip to the model range."""
     arr = arr.astype(np.float32)
+    if not np.isfinite(arr).all() or np.any(arr < 0):
+        raise ValueError("Calibrated linear Sigma0 input must contain only finite, non-negative values")
     arr = np.where(arr > 0, arr, EPS)
     db = 10.0 * np.log10(arr)
     return np.clip(db, DB_CLIP_LOW, DB_CLIP_HIGH).astype(np.float32)
@@ -166,7 +168,9 @@ def convert_patch(patch_dir: Path, out_image: Path, out_mask: Path) -> bool:
     if vv_file is None or vh_file is None or lbl_file is None or valid_file is None:
         return False  # Incomplete SAR/label/validity tuple is not a training example.
 
-    # ── Read raw VV / VH (uint16 linear amplitude) ──────────────────────────
+    # KuroSiwo's SNAP GRD config enables outputSigmaBand and disables
+    # outputImageScaleInDb, so this expects linear Sigma0 power, not amplitude.
+    # Therefore 10*log10 is the correct power-to-dB conversion.
     raw_vv = cv2.imread(str(vv_file), cv2.IMREAD_ANYDEPTH)
     raw_vh = cv2.imread(str(vh_file), cv2.IMREAD_ANYDEPTH)
     if raw_vv is None or raw_vh is None:

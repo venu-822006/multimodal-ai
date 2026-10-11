@@ -1,0 +1,347 @@
+{
+  "bbox": [
+    85.15,
+    27.9,
+    85.45,
+    28.25
+  ],
+  "flood_date": "2026-08-26",
+  "stac_endpoint": "https://stac.dataspace.copernicus.eu/v1/",
+  "total_scenes_found": 10,
+  "valid_same_orbit_pairs": 8,
+  "best_pair": {
+    "pre_scene": {
+      "id": "S1D_IW_GRDH_1SDV_20260824T001844_20260824T001909_004260_007D5D_45FC_COG",
+      "datetime": "2026-08-24T00:18:44.555468Z",
+      "relative_orbit": 19,
+      "direction": "descending",
+      "bbox": [
+        83.261673,
+        27.46051,
+        86.069786,
+        29.389452
+      ],
+      "assets": {
+        "vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/24/S1D_IW_GRDH_1SDV_20260824T001844_20260824T001909_004260_007D5D_45FC_COG.SAFE/measurement/s1d-iw-grd-vh-20260824t001844-20260824t001909-004260-007d5d-002-cog.tiff",
+        "vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/24/S1D_IW_GRDH_1SDV_20260824T001844_20260824T001909_004260_007D5D_45FC_COG.SAFE/measurement/s1d-iw-grd-vv-20260824t001844-20260824t001909-004260-007d5d-001-cog.tiff",
+        "Product": "https://download.dataspace.copernicus.eu/odata/v1/Products(3df84569-b24e-4020-9fbc-480ed1d9e42f)/$value",
+        "thumbnail": "https://datahub.creodias.eu/odata/v1/Assets(d0d4943a-470d-45d3-ad61-84e41794df9c)/$value",
+        "safe_manifest": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/24/S1D_IW_GRDH_1SDV_20260824T001844_20260824T001909_004260_007D5D_45FC_COG.SAFE/manifest.safe",
+        "schema-noise-vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/24/S1D_IW_GRDH_1SDV_20260824T001844_20260824T001909_004260_007D5D_45FC_COG.SAFE/annotation/calibration/noise-s1d-iw-grd-vh-20260824t001844-20260824t001909-004260-007d5d-002-cog.xml",
+        "schema-noise-vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/24/S1D_IW_GRDH_1SDV_20260824T001844_20260824T001909_004260_007D5D_45FC_COG.SAFE/annotation/calibration/noise-s1d-iw-grd-vv-20260824t001844-20260824t001909-004260-007d5d-001-cog.xml",
+        "schema-product-vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/24/S1D_IW_GRDH_1SDV_20260824T001844_20260824T001909_004260_007D5D_45FC_COG.SAFE/annotation/s1d-iw-grd-vh-20260824t001844-20260824t001909-004260-007d5d-002-cog.xml",
+        "schema-product-vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/24/S1D_IW_GRDH_1SDV_20260824T001844_20260824T001909_004260_007D5D_45FC_COG.SAFE/annotation/s1d-iw-grd-vv-20260824t001844-20260824t001909-004260-007d5d-001-cog.xml",
+        "schema-calibration-vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/24/S1D_IW_GRDH_1SDV_20260824T001844_20260824T001909_004260_007D5D_45FC_COG.SAFE/annotation/calibration/calibration-s1d-iw-grd-vh-20260824t001844-20260824t001909-004260-007d5d-002-cog.xml",
+        "schema-calibration-vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/24/S1D_IW_GRDH_1SDV_20260824T001844_20260824T001909_004260_007D5D_45FC_COG.SAFE/annotation/calibration/calibration-s1d-iw-grd-vv-20260824t001844-20260824t001909-004260-007d5d-001-cog.xml"
+      }
+    },
+    "post_scene": {
+      "id": "S1D_IW_GRDH_1SDV_20260905T001844_20260905T001909_004435_00837B_60FD_COG",
+      "datetime": "2026-09-05T00:18:44.831563Z",
+      "relative_orbit": 19,
+      "direction": "descending",
+      "bbox": [
+        83.262238,
+        27.460508,
+        86.070343,
+        29.389458
+      ],
+      "assets": {
+        "vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/09/05/S1D_IW_GRDH_1SDV_20260905T001844_20260905T001909_004435_00837B_60FD_COG.SAFE/measurement/s1d-iw-grd-vh-20260905t001844-20260905t001909-004435-00837b-002-cog.tiff",
+        "vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/09/05/S1D_IW_GRDH_1SDV_20260905T001844_20260905T001909_004435_00837B_60FD_COG.SAFE/measurement/s1d-iw-grd-vv-20260905t001844-20260905t001909-004435-00837b-001-cog.tiff",
+        "Product": "https://download.dataspace.copernicus.eu/odata/v1/Products(48bf438d-31c8-4e57-970c-ac6bc4514414)/$value",
+        "thumbnail": "https://datahub.creodias.eu/odata/v1/Assets(6b73eca7-0458-44d6-8c94-2ed6f2b6d25c)/$value",
+        "safe_manifest": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/09/05/S1D_IW_GRDH_1SDV_20260905T001844_20260905T001909_004435_00837B_60FD_COG.SAFE/manifest.safe",
+        "schema-noise-vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/09/05/S1D_IW_GRDH_1SDV_20260905T001844_20260905T001909_004435_00837B_60FD_COG.SAFE/annotation/calibration/noise-s1d-iw-grd-vh-20260905t001844-20260905t001909-004435-00837b-002-cog.xml",
+        "schema-noise-vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/09/05/S1D_IW_GRDH_1SDV_20260905T001844_20260905T001909_004435_00837B_60FD_COG.SAFE/annotation/calibration/noise-s1d-iw-grd-vv-20260905t001844-20260905t001909-004435-00837b-001-cog.xml",
+        "schema-product-vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/09/05/S1D_IW_GRDH_1SDV_20260905T001844_20260905T001909_004435_00837B_60FD_COG.SAFE/annotation/s1d-iw-grd-vh-20260905t001844-20260905t001909-004435-00837b-002-cog.xml",
+        "schema-product-vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/09/05/S1D_IW_GRDH_1SDV_20260905T001844_20260905T001909_004435_00837B_60FD_COG.SAFE/annotation/s1d-iw-grd-vv-20260905t001844-20260905t001909-004435-00837b-001-cog.xml",
+        "schema-calibration-vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/09/05/S1D_IW_GRDH_1SDV_20260905T001844_20260905T001909_004435_00837B_60FD_COG.SAFE/annotation/calibration/calibration-s1d-iw-grd-vh-20260905t001844-20260905t001909-004435-00837b-002-cog.xml",
+        "schema-calibration-vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/09/05/S1D_IW_GRDH_1SDV_20260905T001844_20260905T001909_004435_00837B_60FD_COG.SAFE/annotation/calibration/calibration-s1d-iw-grd-vv-20260905t001844-20260905t001909-004435-00837b-001-cog.xml"
+      }
+    },
+    "pairing_score": 1.0,
+    "relative_orbit": 19,
+    "direction": "descending"
+  },
+  "all_pairs": [
+    {
+      "pre_scene": {
+        "id": "S1D_IW_GRDH_1SDV_20260824T001844_20260824T001909_004260_007D5D_45FC_COG",
+        "datetime": "2026-08-24T00:18:44.555468Z",
+        "relative_orbit": 19,
+        "direction": "descending",
+        "bbox": [
+          83.261673,
+          27.46051,
+          86.069786,
+          29.389452
+        ],
+        "assets": {
+          "vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/24/S1D_IW_GRDH_1SDV_20260824T001844_20260824T001909_004260_007D5D_45FC_COG.SAFE/measurement/s1d-iw-grd-vh-20260824t001844-20260824t001909-004260-007d5d-002-cog.tiff",
+          "vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/24/S1D_IW_GRDH_1SDV_20260824T001844_20260824T001909_004260_007D5D_45FC_COG.SAFE/measurement/s1d-iw-grd-vv-20260824t001844-20260824t001909-004260-007d5d-001-cog.tiff",
+          "Product": "https://download.dataspace.copernicus.eu/odata/v1/Products(3df84569-b24e-4020-9fbc-480ed1d9e42f)/$value",
+          "thumbnail": "https://datahub.creodias.eu/odata/v1/Assets(d0d4943a-470d-45d3-ad61-84e41794df9c)/$value",
+          "safe_manifest": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/24/S1D_IW_GRDH_1SDV_20260824T001844_20260824T001909_004260_007D5D_45FC_COG.SAFE/manifest.safe",
+          "schema-noise-vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/24/S1D_IW_GRDH_1SDV_20260824T001844_20260824T001909_004260_007D5D_45FC_COG.SAFE/annotation/calibration/noise-s1d-iw-grd-vh-20260824t001844-20260824t001909-004260-007d5d-002-cog.xml",
+          "schema-noise-vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/24/S1D_IW_GRDH_1SDV_20260824T001844_20260824T001909_004260_007D5D_45FC_COG.SAFE/annotation/calibration/noise-s1d-iw-grd-vv-20260824t001844-20260824t001909-004260-007d5d-001-cog.xml",
+          "schema-product-vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/24/S1D_IW_GRDH_1SDV_20260824T001844_20260824T001909_004260_007D5D_45FC_COG.SAFE/annotation/s1d-iw-grd-vh-20260824t001844-20260824t001909-004260-007d5d-002-cog.xml",
+          "schema-product-vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/24/S1D_IW_GRDH_1SDV_20260824T001844_20260824T001909_004260_007D5D_45FC_COG.SAFE/annotation/s1d-iw-grd-vv-20260824t001844-20260824t001909-004260-007d5d-001-cog.xml",
+          "schema-calibration-vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/24/S1D_IW_GRDH_1SDV_20260824T001844_20260824T001909_004260_007D5D_45FC_COG.SAFE/annotation/calibration/calibration-s1d-iw-grd-vh-20260824t001844-20260824t001909-004260-007d5d-002-cog.xml",
+          "schema-calibration-vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/24/S1D_IW_GRDH_1SDV_20260824T001844_20260824T001909_004260_007D5D_45FC_COG.SAFE/annotation/calibration/calibration-s1d-iw-grd-vv-20260824t001844-20260824t001909-004260-007d5d-001-cog.xml"
+        }
+      },
+      "post_scene": {
+        "id": "S1D_IW_GRDH_1SDV_20260905T001844_20260905T001909_004435_00837B_60FD_COG",
+        "datetime": "2026-09-05T00:18:44.831563Z",
+        "relative_orbit": 19,
+        "direction": "descending",
+        "bbox": [
+          83.262238,
+          27.460508,
+          86.070343,
+          29.389458
+        ],
+        "assets": {
+          "vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/09/05/S1D_IW_GRDH_1SDV_20260905T001844_20260905T001909_004435_00837B_60FD_COG.SAFE/measurement/s1d-iw-grd-vh-20260905t001844-20260905t001909-004435-00837b-002-cog.tiff",
+          "vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/09/05/S1D_IW_GRDH_1SDV_20260905T001844_20260905T001909_004435_00837B_60FD_COG.SAFE/measurement/s1d-iw-grd-vv-20260905t001844-20260905t001909-004435-00837b-001-cog.tiff",
+          "Product": "https://download.dataspace.copernicus.eu/odata/v1/Products(48bf438d-31c8-4e57-970c-ac6bc4514414)/$value",
+          "thumbnail": "https://datahub.creodias.eu/odata/v1/Assets(6b73eca7-0458-44d6-8c94-2ed6f2b6d25c)/$value",
+          "safe_manifest": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/09/05/S1D_IW_GRDH_1SDV_20260905T001844_20260905T001909_004435_00837B_60FD_COG.SAFE/manifest.safe",
+          "schema-noise-vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/09/05/S1D_IW_GRDH_1SDV_20260905T001844_20260905T001909_004435_00837B_60FD_COG.SAFE/annotation/calibration/noise-s1d-iw-grd-vh-20260905t001844-20260905t001909-004435-00837b-002-cog.xml",
+          "schema-noise-vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/09/05/S1D_IW_GRDH_1SDV_20260905T001844_20260905T001909_004435_00837B_60FD_COG.SAFE/annotation/calibration/noise-s1d-iw-grd-vv-20260905t001844-20260905t001909-004435-00837b-001-cog.xml",
+          "schema-product-vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/09/05/S1D_IW_GRDH_1SDV_20260905T001844_20260905T001909_004435_00837B_60FD_COG.SAFE/annotation/s1d-iw-grd-vh-20260905t001844-20260905t001909-004435-00837b-002-cog.xml",
+          "schema-product-vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/09/05/S1D_IW_GRDH_1SDV_20260905T001844_20260905T001909_004435_00837B_60FD_COG.SAFE/annotation/s1d-iw-grd-vv-20260905t001844-20260905t001909-004435-00837b-001-cog.xml",
+          "schema-calibration-vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/09/05/S1D_IW_GRDH_1SDV_20260905T001844_20260905T001909_004435_00837B_60FD_COG.SAFE/annotation/calibration/calibration-s1d-iw-grd-vh-20260905t001844-20260905t001909-004435-00837b-002-cog.xml",
+          "schema-calibration-vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/09/05/S1D_IW_GRDH_1SDV_20260905T001844_20260905T001909_004435_00837B_60FD_COG.SAFE/annotation/calibration/calibration-s1d-iw-grd-vv-20260905t001844-20260905t001909-004435-00837b-001-cog.xml"
+        }
+      },
+      "pairing_score": 1.0,
+      "relative_orbit": 19,
+      "direction": "descending"
+    },
+    {
+      "pre_scene": {
+        "id": "S1D_IW_GRDH_1SDV_20260819T001036_20260819T001101_004187_007ABD_B38C_COG",
+        "datetime": "2026-08-19T00:10:36.889384Z",
+        "relative_orbit": 121,
+        "direction": "descending",
+        "bbox": [
+          85.232002,
+          27.070326,
+          88.040062,
+          28.997923
+        ],
+        "assets": {
+          "vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/19/S1D_IW_GRDH_1SDV_20260819T001036_20260819T001101_004187_007ABD_B38C_COG.SAFE/measurement/s1d-iw-grd-vh-20260819t001036-20260819t001101-004187-007abd-002-cog.tiff",
+          "vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/19/S1D_IW_GRDH_1SDV_20260819T001036_20260819T001101_004187_007ABD_B38C_COG.SAFE/measurement/s1d-iw-grd-vv-20260819t001036-20260819t001101-004187-007abd-001-cog.tiff",
+          "Product": "https://download.dataspace.copernicus.eu/odata/v1/Products(f602b1b7-1ed0-417d-91e7-27991b733982)/$value",
+          "thumbnail": "https://datahub.creodias.eu/odata/v1/Assets(1d39e24b-132d-4741-814f-c3e5f923a521)/$value",
+          "safe_manifest": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/19/S1D_IW_GRDH_1SDV_20260819T001036_20260819T001101_004187_007ABD_B38C_COG.SAFE/manifest.safe",
+          "schema-noise-vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/19/S1D_IW_GRDH_1SDV_20260819T001036_20260819T001101_004187_007ABD_B38C_COG.SAFE/annotation/calibration/noise-s1d-iw-grd-vh-20260819t001036-20260819t001101-004187-007abd-002-cog.xml",
+          "schema-noise-vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/19/S1D_IW_GRDH_1SDV_20260819T001036_20260819T001101_004187_007ABD_B38C_COG.SAFE/annotation/calibration/noise-s1d-iw-grd-vv-20260819t001036-20260819t001101-004187-007abd-001-cog.xml",
+          "schema-product-vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/19/S1D_IW_GRDH_1SDV_20260819T001036_20260819T001101_004187_007ABD_B38C_COG.SAFE/annotation/s1d-iw-grd-vh-20260819t001036-20260819t001101-004187-007abd-002-cog.xml",
+          "schema-product-vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/19/S1D_IW_GRDH_1SDV_20260819T001036_20260819T001101_004187_007ABD_B38C_COG.SAFE/annotation/s1d-iw-grd-vv-20260819t001036-20260819t001101-004187-007abd-001-cog.xml",
+          "schema-calibration-vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/19/S1D_IW_GRDH_1SDV_20260819T001036_20260819T001101_004187_007ABD_B38C_COG.SAFE/annotation/calibration/calibration-s1d-iw-grd-vh-20260819t001036-20260819t001101-004187-007abd-002-cog.xml",
+          "schema-calibration-vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/19/S1D_IW_GRDH_1SDV_20260819T001036_20260819T001101_004187_007ABD_B38C_COG.SAFE/annotation/calibration/calibration-s1d-iw-grd-vv-20260819t001036-20260819t001101-004187-007abd-001-cog.xml"
+        }
+      },
+      "post_scene": {
+        "id": "S1D_IW_GRDH_1SDV_20260831T001037_20260831T001102_004362_0080EC_65B9_COG",
+        "datetime": "2026-08-31T00:10:37.647071Z",
+        "relative_orbit": 121,
+        "direction": "descending",
+        "bbox": [
+          85.231094,
+          27.070356,
+          88.039307,
+          28.997856
+        ],
+        "assets": {
+          "vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/31/S1D_IW_GRDH_1SDV_20260831T001037_20260831T001102_004362_0080EC_65B9_COG.SAFE/measurement/s1d-iw-grd-vh-20260831t001037-20260831t001102-004362-0080ec-002-cog.tiff",
+          "vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/31/S1D_IW_GRDH_1SDV_20260831T001037_20260831T001102_004362_0080EC_65B9_COG.SAFE/measurement/s1d-iw-grd-vv-20260831t001037-20260831t001102-004362-0080ec-001-cog.tiff",
+          "Product": "https://download.dataspace.copernicus.eu/odata/v1/Products(e9713b54-de96-4bb1-a3f9-079c9660a442)/$value",
+          "thumbnail": "https://datahub.creodias.eu/odata/v1/Assets(e220b9e3-d698-461a-a99b-06fac12c513d)/$value",
+          "safe_manifest": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/31/S1D_IW_GRDH_1SDV_20260831T001037_20260831T001102_004362_0080EC_65B9_COG.SAFE/manifest.safe",
+          "schema-noise-vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/31/S1D_IW_GRDH_1SDV_20260831T001037_20260831T001102_004362_0080EC_65B9_COG.SAFE/annotation/calibration/noise-s1d-iw-grd-vh-20260831t001037-20260831t001102-004362-0080ec-002-cog.xml",
+          "schema-noise-vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/31/S1D_IW_GRDH_1SDV_20260831T001037_20260831T001102_004362_0080EC_65B9_COG.SAFE/annotation/calibration/noise-s1d-iw-grd-vv-20260831t001037-20260831t001102-004362-0080ec-001-cog.xml",
+          "schema-product-vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/31/S1D_IW_GRDH_1SDV_20260831T001037_20260831T001102_004362_0080EC_65B9_COG.SAFE/annotation/s1d-iw-grd-vh-20260831t001037-20260831t001102-004362-0080ec-002-cog.xml",
+          "schema-product-vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/31/S1D_IW_GRDH_1SDV_20260831T001037_20260831T001102_004362_0080EC_65B9_COG.SAFE/annotation/s1d-iw-grd-vv-20260831t001037-20260831t001102-004362-0080ec-001-cog.xml",
+          "schema-calibration-vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/31/S1D_IW_GRDH_1SDV_20260831T001037_20260831T001102_004362_0080EC_65B9_COG.SAFE/annotation/calibration/calibration-s1d-iw-grd-vh-20260831t001037-20260831t001102-004362-0080ec-002-cog.xml",
+          "schema-calibration-vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/31/S1D_IW_GRDH_1SDV_20260831T001037_20260831T001102_004362_0080EC_65B9_COG.SAFE/annotation/calibration/calibration-s1d-iw-grd-vv-20260831t001037-20260831t001102-004362-0080ec-001-cog.xml"
+        }
+      },
+      "pairing_score": 1.0,
+      "relative_orbit": 121,
+      "direction": "descending"
+    },
+    {
+      "pre_scene": {
+        "id": "S1D_IW_GRDH_1SDV_20260816T122141_20260816T122206_004151_007980_B091_COG",
+        "datetime": "2026-08-16T12:21:41.058298Z",
+        "relative_orbit": 85,
+        "direction": "ascending",
+        "bbox": [
+          83.9244,
+          27.591494,
+          86.749352,
+          29.524935
+        ],
+        "assets": {
+          "vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/16/S1D_IW_GRDH_1SDV_20260816T122141_20260816T122206_004151_007980_B091_COG.SAFE/measurement/s1d-iw-grd-vh-20260816t122141-20260816t122206-004151-007980-002-cog.tiff",
+          "vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/16/S1D_IW_GRDH_1SDV_20260816T122141_20260816T122206_004151_007980_B091_COG.SAFE/measurement/s1d-iw-grd-vv-20260816t122141-20260816t122206-004151-007980-001-cog.tiff",
+          "Product": "https://download.dataspace.copernicus.eu/odata/v1/Products(04db2c11-1319-4808-adaa-da7f7ccbbd4f)/$value",
+          "thumbnail": "https://datahub.creodias.eu/odata/v1/Assets(4d7baa4e-44f2-4b85-b0e7-0436c0510976)/$value",
+          "safe_manifest": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/16/S1D_IW_GRDH_1SDV_20260816T122141_20260816T122206_004151_007980_B091_COG.SAFE/manifest.safe",
+          "schema-noise-vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/16/S1D_IW_GRDH_1SDV_20260816T122141_20260816T122206_004151_007980_B091_COG.SAFE/annotation/calibration/noise-s1d-iw-grd-vh-20260816t122141-20260816t122206-004151-007980-002-cog.xml",
+          "schema-noise-vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/16/S1D_IW_GRDH_1SDV_20260816T122141_20260816T122206_004151_007980_B091_COG.SAFE/annotation/calibration/noise-s1d-iw-grd-vv-20260816t122141-20260816t122206-004151-007980-001-cog.xml",
+          "schema-product-vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/16/S1D_IW_GRDH_1SDV_20260816T122141_20260816T122206_004151_007980_B091_COG.SAFE/annotation/s1d-iw-grd-vh-20260816t122141-20260816t122206-004151-007980-002-cog.xml",
+          "schema-product-vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/16/S1D_IW_GRDH_1SDV_20260816T122141_20260816T122206_004151_007980_B091_COG.SAFE/annotation/s1d-iw-grd-vv-20260816t122141-20260816t122206-004151-007980-001-cog.xml",
+          "schema-calibration-vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/16/S1D_IW_GRDH_1SDV_20260816T122141_20260816T122206_004151_007980_B091_COG.SAFE/annotation/calibration/calibration-s1d-iw-grd-vh-20260816t122141-20260816t122206-004151-007980-002-cog.xml",
+          "schema-calibration-vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/16/S1D_IW_GRDH_1SDV_20260816T122141_20260816T122206_004151_007980_B091_COG.SAFE/annotation/calibration/calibration-s1d-iw-grd-vv-20260816t122141-20260816t122206-004151-007980-001-cog.xml"
+        }
+      },
+      "post_scene": {
+        "id": "S1D_IW_GRDH_1SDV_20260828T122141_20260828T122206_004326_007FA4_C73B_COG",
+        "datetime": "2026-08-28T12:21:41.762029Z",
+        "relative_orbit": 85,
+        "direction": "ascending",
+        "bbox": [
+          83.924644,
+          27.591553,
+          86.749588,
+          29.524954
+        ],
+        "assets": {
+          "vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/28/S1D_IW_GRDH_1SDV_20260828T122141_20260828T122206_004326_007FA4_C73B_COG.SAFE/measurement/s1d-iw-grd-vh-20260828t122141-20260828t122206-004326-007fa4-002-cog.tiff",
+          "vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/28/S1D_IW_GRDH_1SDV_20260828T122141_20260828T122206_004326_007FA4_C73B_COG.SAFE/measurement/s1d-iw-grd-vv-20260828t122141-20260828t122206-004326-007fa4-001-cog.tiff",
+          "Product": "https://download.dataspace.copernicus.eu/odata/v1/Products(9e6c24a1-24ca-419f-bcec-db66791dcf19)/$value",
+          "thumbnail": "https://datahub.creodias.eu/odata/v1/Assets(0ae01571-da47-499f-89fe-af7f7a17c6e3)/$value",
+          "safe_manifest": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/28/S1D_IW_GRDH_1SDV_20260828T122141_20260828T122206_004326_007FA4_C73B_COG.SAFE/manifest.safe",
+          "schema-noise-vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/28/S1D_IW_GRDH_1SDV_20260828T122141_20260828T122206_004326_007FA4_C73B_COG.SAFE/annotation/calibration/noise-s1d-iw-grd-vh-20260828t122141-20260828t122206-004326-007fa4-002-cog.xml",
+          "schema-noise-vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/28/S1D_IW_GRDH_1SDV_20260828T122141_20260828T122206_004326_007FA4_C73B_COG.SAFE/annotation/calibration/noise-s1d-iw-grd-vv-20260828t122141-20260828t122206-004326-007fa4-001-cog.xml",
+          "schema-product-vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/28/S1D_IW_GRDH_1SDV_20260828T122141_20260828T122206_004326_007FA4_C73B_COG.SAFE/annotation/s1d-iw-grd-vh-20260828t122141-20260828t122206-004326-007fa4-002-cog.xml",
+          "schema-product-vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/28/S1D_IW_GRDH_1SDV_20260828T122141_20260828T122206_004326_007FA4_C73B_COG.SAFE/annotation/s1d-iw-grd-vv-20260828t122141-20260828t122206-004326-007fa4-001-cog.xml",
+          "schema-calibration-vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/28/S1D_IW_GRDH_1SDV_20260828T122141_20260828T122206_004326_007FA4_C73B_COG.SAFE/annotation/calibration/calibration-s1d-iw-grd-vh-20260828t122141-20260828t122206-004326-007fa4-002-cog.xml",
+          "schema-calibration-vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/28/S1D_IW_GRDH_1SDV_20260828T122141_20260828T122206_004326_007FA4_C73B_COG.SAFE/annotation/calibration/calibration-s1d-iw-grd-vv-20260828t122141-20260828t122206-004326-007fa4-001-cog.xml"
+        }
+      },
+      "pairing_score": 1.0,
+      "relative_orbit": 85,
+      "direction": "ascending"
+    },
+    {
+      "pre_scene": {
+        "id": "S1D_IW_GRDH_1SDV_20260819T001036_20260819T001101_004187_007ABD_B38C_COG",
+        "datetime": "2026-08-19T00:10:36.889384Z",
+        "relative_orbit": 121,
+        "direction": "descending",
+        "bbox": [
+          85.232002,
+          27.070326,
+          88.040062,
+          28.997923
+        ],
+        "assets": {
+          "vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/19/S1D_IW_GRDH_1SDV_20260819T001036_20260819T001101_004187_007ABD_B38C_COG.SAFE/measurement/s1d-iw-grd-vh-20260819t001036-20260819t001101-004187-007abd-002-cog.tiff",
+          "vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/19/S1D_IW_GRDH_1SDV_20260819T001036_20260819T001101_004187_007ABD_B38C_COG.SAFE/measurement/s1d-iw-grd-vv-20260819t001036-20260819t001101-004187-007abd-001-cog.tiff",
+          "Product": "https://download.dataspace.copernicus.eu/odata/v1/Products(f602b1b7-1ed0-417d-91e7-27991b733982)/$value",
+          "thumbnail": "https://datahub.creodias.eu/odata/v1/Assets(1d39e24b-132d-4741-814f-c3e5f923a521)/$value",
+          "safe_manifest": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/19/S1D_IW_GRDH_1SDV_20260819T001036_20260819T001101_004187_007ABD_B38C_COG.SAFE/manifest.safe",
+          "schema-noise-vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/19/S1D_IW_GRDH_1SDV_20260819T001036_20260819T001101_004187_007ABD_B38C_COG.SAFE/annotation/calibration/noise-s1d-iw-grd-vh-20260819t001036-20260819t001101-004187-007abd-002-cog.xml",
+          "schema-noise-vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/19/S1D_IW_GRDH_1SDV_20260819T001036_20260819T001101_004187_007ABD_B38C_COG.SAFE/annotation/calibration/noise-s1d-iw-grd-vv-20260819t001036-20260819t001101-004187-007abd-001-cog.xml",
+          "schema-product-vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/19/S1D_IW_GRDH_1SDV_20260819T001036_20260819T001101_004187_007ABD_B38C_COG.SAFE/annotation/s1d-iw-grd-vh-20260819t001036-20260819t001101-004187-007abd-002-cog.xml",
+          "schema-product-vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/19/S1D_IW_GRDH_1SDV_20260819T001036_20260819T001101_004187_007ABD_B38C_COG.SAFE/annotation/s1d-iw-grd-vv-20260819t001036-20260819t001101-004187-007abd-001-cog.xml",
+          "schema-calibration-vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/19/S1D_IW_GRDH_1SDV_20260819T001036_20260819T001101_004187_007ABD_B38C_COG.SAFE/annotation/calibration/calibration-s1d-iw-grd-vh-20260819t001036-20260819t001101-004187-007abd-002-cog.xml",
+          "schema-calibration-vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/19/S1D_IW_GRDH_1SDV_20260819T001036_20260819T001101_004187_007ABD_B38C_COG.SAFE/annotation/calibration/calibration-s1d-iw-grd-vv-20260819t001036-20260819t001101-004187-007abd-001-cog.xml"
+        }
+      },
+      "post_scene": {
+        "id": "S1D_IW_GRDH_1SDV_20260912T001038_20260912T001103_004537_008704_48CA_COG",
+        "datetime": "2026-09-12T00:10:38.079272Z",
+        "relative_orbit": 121,
+        "direction": "descending",
+        "bbox": [
+          85.230827,
+          27.070316,
+          88.039146,
+          28.997904
+        ],
+        "assets": {
+          "vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/09/12/S1D_IW_GRDH_1SDV_20260912T001038_20260912T001103_004537_008704_48CA_COG.SAFE/measurement/s1d-iw-grd-vh-20260912t001038-20260912t001103-004537-008704-002-cog.tiff",
+          "vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/09/12/S1D_IW_GRDH_1SDV_20260912T001038_20260912T001103_004537_008704_48CA_COG.SAFE/measurement/s1d-iw-grd-vv-20260912t001038-20260912t001103-004537-008704-001-cog.tiff",
+          "Product": "https://download.dataspace.copernicus.eu/odata/v1/Products(570a95de-7fa1-4ef8-9fd1-37b0aae9eed2)/$value",
+          "thumbnail": "https://datahub.creodias.eu/odata/v1/Assets(87760360-02fe-47d5-8eeb-aa296fc0d0c6)/$value",
+          "safe_manifest": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/09/12/S1D_IW_GRDH_1SDV_20260912T001038_20260912T001103_004537_008704_48CA_COG.SAFE/manifest.safe",
+          "schema-noise-vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/09/12/S1D_IW_GRDH_1SDV_20260912T001038_20260912T001103_004537_008704_48CA_COG.SAFE/annotation/calibration/noise-s1d-iw-grd-vh-20260912t001038-20260912t001103-004537-008704-002-cog.xml",
+          "schema-noise-vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/09/12/S1D_IW_GRDH_1SDV_20260912T001038_20260912T001103_004537_008704_48CA_COG.SAFE/annotation/calibration/noise-s1d-iw-grd-vv-20260912t001038-20260912t001103-004537-008704-001-cog.xml",
+          "schema-product-vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/09/12/S1D_IW_GRDH_1SDV_20260912T001038_20260912T001103_004537_008704_48CA_COG.SAFE/annotation/s1d-iw-grd-vh-20260912t001038-20260912t001103-004537-008704-002-cog.xml",
+          "schema-product-vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/09/12/S1D_IW_GRDH_1SDV_20260912T001038_20260912T001103_004537_008704_48CA_COG.SAFE/annotation/s1d-iw-grd-vv-20260912t001038-20260912t001103-004537-008704-001-cog.xml",
+          "schema-calibration-vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/09/12/S1D_IW_GRDH_1SDV_20260912T001038_20260912T001103_004537_008704_48CA_COG.SAFE/annotation/calibration/calibration-s1d-iw-grd-vh-20260912t001038-20260912t001103-004537-008704-002-cog.xml",
+          "schema-calibration-vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/09/12/S1D_IW_GRDH_1SDV_20260912T001038_20260912T001103_004537_008704_48CA_COG.SAFE/annotation/calibration/calibration-s1d-iw-grd-vv-20260912t001038-20260912t001103-004537-008704-001-cog.xml"
+        }
+      },
+      "pairing_score": 0.75,
+      "relative_orbit": 121,
+      "direction": "descending"
+    },
+    {
+      "pre_scene": {
+        "id": "S1D_IW_GRDH_1SDV_20260816T122141_20260816T122206_004151_007980_B091_COG",
+        "datetime": "2026-08-16T12:21:41.058298Z",
+        "relative_orbit": 85,
+        "direction": "ascending",
+        "bbox": [
+          83.9244,
+          27.591494,
+          86.749352,
+          29.524935
+        ],
+        "assets": {
+          "vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/16/S1D_IW_GRDH_1SDV_20260816T122141_20260816T122206_004151_007980_B091_COG.SAFE/measurement/s1d-iw-grd-vh-20260816t122141-20260816t122206-004151-007980-002-cog.tiff",
+          "vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/16/S1D_IW_GRDH_1SDV_20260816T122141_20260816T122206_004151_007980_B091_COG.SAFE/measurement/s1d-iw-grd-vv-20260816t122141-20260816t122206-004151-007980-001-cog.tiff",
+          "Product": "https://download.dataspace.copernicus.eu/odata/v1/Products(04db2c11-1319-4808-adaa-da7f7ccbbd4f)/$value",
+          "thumbnail": "https://datahub.creodias.eu/odata/v1/Assets(4d7baa4e-44f2-4b85-b0e7-0436c0510976)/$value",
+          "safe_manifest": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/16/S1D_IW_GRDH_1SDV_20260816T122141_20260816T122206_004151_007980_B091_COG.SAFE/manifest.safe",
+          "schema-noise-vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/16/S1D_IW_GRDH_1SDV_20260816T122141_20260816T122206_004151_007980_B091_COG.SAFE/annotation/calibration/noise-s1d-iw-grd-vh-20260816t122141-20260816t122206-004151-007980-002-cog.xml",
+          "schema-noise-vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/16/S1D_IW_GRDH_1SDV_20260816T122141_20260816T122206_004151_007980_B091_COG.SAFE/annotation/calibration/noise-s1d-iw-grd-vv-20260816t122141-20260816t122206-004151-007980-001-cog.xml",
+          "schema-product-vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/16/S1D_IW_GRDH_1SDV_20260816T122141_20260816T122206_004151_007980_B091_COG.SAFE/annotation/s1d-iw-grd-vh-20260816t122141-20260816t122206-004151-007980-002-cog.xml",
+          "schema-product-vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/16/S1D_IW_GRDH_1SDV_20260816T122141_20260816T122206_004151_007980_B091_COG.SAFE/annotation/s1d-iw-grd-vv-20260816t122141-20260816t122206-004151-007980-001-cog.xml",
+          "schema-calibration-vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/16/S1D_IW_GRDH_1SDV_20260816T122141_20260816T122206_004151_007980_B091_COG.SAFE/annotation/calibration/calibration-s1d-iw-grd-vh-20260816t122141-20260816t122206-004151-007980-002-cog.xml",
+          "schema-calibration-vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/08/16/S1D_IW_GRDH_1SDV_20260816T122141_20260816T122206_004151_007980_B091_COG.SAFE/annotation/calibration/calibration-s1d-iw-grd-vv-20260816t122141-20260816t122206-004151-007980-001-cog.xml"
+        }
+      },
+      "post_scene": {
+        "id": "S1D_IW_GRDH_1SDV_20260909T122141_20260909T122206_004501_0085C5_3DCC_COG",
+        "datetime": "2026-09-09T12:21:41.967975Z",
+        "relative_orbit": 85,
+        "direction": "ascending",
+        "bbox": [
+          83.925163,
+          27.591581,
+          86.750214,
+          29.525007
+        ],
+        "assets": {
+          "vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/09/09/S1D_IW_GRDH_1SDV_20260909T122141_20260909T122206_004501_0085C5_3DCC_COG.SAFE/measurement/s1d-iw-grd-vh-20260909t122141-20260909t122206-004501-0085c5-002-cog.tiff",
+          "vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/09/09/S1D_IW_GRDH_1SDV_20260909T122141_20260909T122206_004501_0085C5_3DCC_COG.SAFE/measurement/s1d-iw-grd-vv-20260909t122141-20260909t122206-004501-0085c5-001-cog.tiff",
+          "Product": "https://download.dataspace.copernicus.eu/odata/v1/Products(db017667-e895-4586-a3d1-c019a5ef43a7)/$value",
+          "thumbnail": "https://datahub.creodias.eu/odata/v1/Assets(20ffc6b7-2a5a-4a89-814e-9dafaccf612f)/$value",
+          "safe_manifest": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/09/09/S1D_IW_GRDH_1SDV_20260909T122141_20260909T122206_004501_0085C5_3DCC_COG.SAFE/manifest.safe",
+          "schema-noise-vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/09/09/S1D_IW_GRDH_1SDV_20260909T122141_20260909T122206_004501_0085C5_3DCC_COG.SAFE/annotation/calibration/noise-s1d-iw-grd-vh-20260909t122141-20260909t122206-004501-0085c5-002-cog.xml",
+          "schema-noise-vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/09/09/S1D_IW_GRDH_1SDV_20260909T122141_20260909T122206_004501_0085C5_3DCC_COG.SAFE/annotation/calibration/noise-s1d-iw-grd-vv-20260909t122141-20260909t122206-004501-0085c5-001-cog.xml",
+          "schema-product-vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/09/09/S1D_IW_GRDH_1SDV_20260909T122141_20260909T122206_004501_0085C5_3DCC_COG.SAFE/annotation/s1d-iw-grd-vh-20260909t122141-20260909t122206-004501-0085c5-002-cog.xml",
+          "schema-product-vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/09/09/S1D_IW_GRDH_1SDV_20260909T122141_20260909T122206_004501_0085C5_3DCC_COG.SAFE/annotation/s1d-iw-grd-vv-20260909t122141-20260909t122206-004501-0085c5-001-cog.xml",
+          "schema-calibration-vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/09/09/S1D_IW_GRDH_1SDV_20260909T122141_20260909T122206_004501_0085C5_3DCC_COG.SAFE/annotation/calibration/calibration-s1d-iw-grd-vh-20260909t122141-20260909t122206-004501-0085c5-002-cog.xml",
+          "schema-calibration-vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2026/09/09/S1D_IW_GRDH_1SDV_20260909T122141_20260909T122206_004501_0085C5_3DCC_COG.SAFE/annotation/calibration/calibration-s1d-iw-grd-vv-20260909t122141-20260909t122206-004501-0085c5-001-cog.xml"
+        }
+      },
+      "pairing_score": 0.75,
+      "relative_orbit": 85,
+      "direction": "ascending"
+    }
+  ],
+  "status": "PAIR_FOUND",
+  "message": "Found optimal same-orbit pair (Orbit 19, descending) with pairing score 1.000.",
+  "sentinel2_scenes": []
+}

@@ -33,6 +33,7 @@ Usage:
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -110,13 +111,17 @@ def analyze_damage(
 
     # 2. Roads intersection (length in km)
     if roads_geojson and "features" in roads_geojson:
-        geod = CRS.from_epsg(4326).get_geod()
+        def geodesic_segment_length_m(x1: float, y1: float, x2: float, y2: float) -> float:
+            mid_lat = math.radians((y1 + y2) / 2.0)
+            dx = (x2 - x1) * 111_320.0 * math.cos(mid_lat)
+            dy = (y2 - y1) * 111_139.0
+            return math.hypot(dx, dy)
 
         def geodesic_length_km(geometry) -> float:
             if geometry.geom_type == "LineString":
                 coords = list(geometry.coords)
                 return sum(
-                    geod.inv(x1, y1, x2, y2)[2]
+                    geodesic_segment_length_m(x1, y1, x2, y2)
                     for (x1, y1), (x2, y2) in zip(coords, coords[1:])
                 ) / 1000.0
             if geometry.geom_type == "MultiLineString":
