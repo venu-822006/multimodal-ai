@@ -82,14 +82,17 @@ process and inference.
 
 ---
 
-## 5. Multi-Stage Anti-Hallucination Pipeline
-SAR segmentation neural networks commonly suffer from false-positive hallucinations in mountainous or urban terrain. FloodSight AI implements a multi-stage physics-grounded anti-hallucination suppression filter:
+## 5. Heuristic Prediction Postprocessing
+FloodSight applies optional heuristic screens after model inference. These rules
+may remove real inundation as well as false alarms, and have not been validated
+as an operational false-positive filter:
 
 1. **Temperature Scaling (optional, not fitted calibration):**
    - The default is $\tau = 1.0$, which leaves logits unchanged. Other values are
      user-configurable but have not been calibrated on a separate calibration set:
      $$p_i = \frac{\exp(z_i / \tau)}{\sum_j \exp(z_j / \tau)}$$
-   - Prevents artificial overconfidence spikes before thresholding.
+   - No probability calibration is applied by default. Non-default temperatures
+     only alter softmax sharpness and have not been fitted on held-out calibration data.
 2. **Probability Thresholding:**
    - The current clean-event checkpoint uses $0.49$, selected to maximize
      pooled F1 on validation Event 1111006. The untouched Event 1111005 test

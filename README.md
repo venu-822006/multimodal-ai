@@ -34,7 +34,7 @@
   - [7.3 Model Training with Event-Held-Out Splits](#73-model-training-with-event-held-out-splits)
   - [7.4 Validation-Only Threshold Calibration](#74-validation-only-threshold-calibration)
   - [7.5 Worker Execution with Prepared Scenes](#75-worker-execution-with-prepared-scenes)
-  - [7.6 End-to-End Master Pipeline](#76-end-to-end-master-pipeline)
+  - [7.6 Model Training and Evaluation Pipeline](#76-model-training-and-evaluation-pipeline)
 - [8. Benchmark Results & Empirical Evaluation](#8-benchmark-results--empirical-evaluation)
   - [8.1 Unseen Himalayan Topography Benchmark (Event 1111005)](#81-unseen-himalayan-topography-benchmark-event-1111005)
   - [8.2 Independent EMSR927 Copernicus Reference Evaluation](#82-independent-emsr927-copernicus-reference-evaluation)
@@ -282,7 +282,7 @@ aimodel/
 │   ├── himalayan_eval/          # Prior 30-scene validation-overlap report
 │   ├── hackathon_holdout_1111005_test_rerun/ # Clean 1,369-scene test predictions
 │   │   └── himalayan_evaluation_report.json
-│   ├── trishuli_case_study/     # Trishuli River flash flood demonstration
+│   ├── trishuli_case_study/     # Legacy demonstration artifacts; provenance/scale not verified
 │   ├── status.json              # Real-time state machine log
 │   ├── facts.json               # Canonical computed disaster metrics
 │   ├── situation_report.html    # Standalone executive briefing
@@ -486,13 +486,13 @@ This organizes the dataset into:
 Train `FloodUNet` from scratch with event-held-out validation to prevent spatial data leakage:
 
 ```powershell
-python train.py --data-dir data/processed --output-dir checkpoints `
+python train.py --data-dir data/processed --output-dir checkpoints/hackathon_holdout_1111005 `
     --val-events 1111006 --test-events 1111005 `
     --epochs 30 --patience 8 --batch-size 4 --patch-size 224 `
     --flood-weight 8.0 --event-balanced-sampling
 ```
 
-* **Outputs:** Serialized weights (`checkpoints/best.pt`), validation manifest (`checkpoints/val_manifest.json`), and metrics log (`checkpoints/training_history.csv`).
+* **Outputs:** Serialized weights, split manifests, and metrics under `checkpoints/hackathon_holdout_1111005/`.
 
 ---
 
@@ -502,13 +502,13 @@ Calibrate optimal operating cutoff using validation scenes only (preventing test
 
 ```powershell
 # Generate validation probability maps
-python predict.py --manifest checkpoints/val_manifest.json `
-    --checkpoint checkpoints/best.pt --out-dir outputs/validation `
+python predict.py --manifest checkpoints/hackathon_holdout_1111005/val_manifest.json `
+    --checkpoint checkpoints/hackathon_holdout_1111005/best.pt --out-dir outputs/validation `
     --save-probability
 
 # Calibrate optimal decision threshold
-python calibrate_threshold.py --manifest checkpoints/val_manifest.json `
-    --prob-dir outputs/validation --out-json outputs/validation/threshold.json
+python calibrate_threshold.py --manifest checkpoints/hackathon_holdout_1111005/val_manifest.json `
+    --prob-dir outputs/validation --out-json checkpoints/hackathon_holdout_1111005/threshold_calibration.json
 ```
 
 ---
@@ -526,7 +526,12 @@ python worker.py --bbox 85.1 27.8 85.5 28.1 --flood-date 2026-08-26 `
 
 *Optional clear-sky Sentinel-2 optical bands:* Add `--s2-green data/scenes/s2_green.tif --s2-nir data/scenes/s2_nir.tif`.
 
-The worker crops the supplied pair to the AOI, then creates predictions and downstream artifacts. Record acquisition dates/orbits and confirm that the rasters are a same-orbit pair before using the run. A discovered STAC pair is not automatically linked to or verified against the supplied files.
+The worker crops the supplied pair to the AOI, then creates predictions and downstream artifacts. When input tags exist, it compares their orbit/direction with the best STAC pair; it cannot prove the files are those exact products. Missing acquisition/orbit tags still require operator verification.
+
+The checked-in `outputs/trishuli_case_study/` bundle predates the current
+provenance and caveat handling. Its source attribution, scene resolution, and
+model results have not been revalidated; treat it as a legacy illustration,
+not as a current verified analysis.
 
 ---
 

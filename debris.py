@@ -91,6 +91,7 @@ def detect_debris_candidates(
     candidate = (
         (combined_increase >= min_backscatter_increase_db)
         & (post_vh > -22.0)  # Debris is radar bright, not deep dark water
+        & (roughness_increase > 0.0)
         & valid
     )
 
@@ -217,6 +218,8 @@ def run_debris_module(
         "debris_pixel_count": int(debris_px),
         "total_valid_pixels": int(valid_px),
         "debris_heuristic_score": float(heuristic_score),
+        "method": "uncalibrated VV/VH backscatter increase plus positive local VH variance change",
+        "minimum_backscatter_increase_db": float(min_backscatter_increase_db),
         "classes": {
             "0": "Background",
             "1": "Class A: Flood/Inundation (core)",

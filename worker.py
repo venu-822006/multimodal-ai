@@ -271,12 +271,20 @@ def validate_pair_against_discovery(pair_validation: dict, stac_results: dict) -
     if not pair_validation.get("same_orbit_verified_from_tags"):
         return {"stac_orbit_consistency": "not_checkable_input_orbit_tags_missing"}
 
-    selected_orbit = str(best_pair.get("relative_orbit", "")).strip()
-    selected_direction = str(best_pair.get("direction", "")).strip().casefold()
+    def normalized_orbit(value) -> str:
+        raw = str(value or "").strip()
+        return str(int(raw)) if raw.isdigit() else raw.casefold()
+
+    def normalized_direction(value) -> str:
+        raw = str(value or "").strip().casefold()
+        return {"a": "ascending", "asc": "ascending", "d": "descending", "desc": "descending"}.get(raw, raw)
+
+    selected_orbit = normalized_orbit(best_pair.get("relative_orbit"))
+    selected_direction = normalized_direction(best_pair.get("direction"))
     rasters = pair_validation.get("rasters", [])
     matches = all(
-        str(raster.get("relative_orbit", "")).strip() == selected_orbit
-        and str(raster.get("orbit_direction", "")).strip().casefold() == selected_direction
+        normalized_orbit(raster.get("relative_orbit")) == selected_orbit
+        and normalized_direction(raster.get("orbit_direction")) == selected_direction
         for raster in rasters
     )
     if not matches:
