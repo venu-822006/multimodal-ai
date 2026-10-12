@@ -45,8 +45,8 @@ event for validation/model selection. For example:
 
 ```bash
 python train.py --data-dir data/processed --output-dir checkpoints/ready_run \
-  --val-events 1111005 --test-events 1111003 --epochs 100 --patience 15 \
-  --flood-weight 8
+  --val-events 1111006 --test-events 1111005 --epochs 30 --patience 8 \
+  --flood-weight 8 --event-balanced-sampling
 ```
 
 The training command writes separate validation and test manifests. The test

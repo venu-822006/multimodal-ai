@@ -3,9 +3,10 @@
 The challenge requires testing on Himalayan scenes excluded from training.
 For a final, leakage-resistant result, use the dedicated split below: Event
 `1111005` is excluded from training and validation, and its threshold is fixed
-using Event `1111006`. `evaluate_himalayan.py` is an exploratory helper for
-validation manifests; its older 30-scene report is not the final test because
-Event `1111005` was present in the prior validation manifest.
+using Event `1111006`. `evaluate_himalayan.py` now requires a dedicated test
+manifest and checks that the checkpoint records the same test events, disjoint
+from its training and validation events. The older 30-scene report below was
+created before that guard and is retained only as a validation-overlap example.
 
 The clean split was trained and evaluated with:
 
