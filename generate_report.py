@@ -267,6 +267,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   </div>
 </div>
 
+<div class="section" style="background: #fdfbf7; border-color: #f3e8d2;">
+  <h2>कार्यकारी सारांश (Bilingual Rescuer Briefing — Nepali)</h2>
+  <div style="font-size: 11px; color: #451a03; line-height: 1.5;">
+    <strong>उद्धार तथा राहत टोलीका लागि मुख्य वस्तुस्थिति:</strong><br>
+    • कुल बाढी प्रभावित क्षेत्र: <strong>{{FLOOD_AREA_KM2}} वर्ग कि.मि.</strong> (क्षेत्रफलको {{FLOOD_FRACTION}}%)<br>
+    • सम्भावित प्रभावित संरचनाहरू: <strong>{{BUILDINGS_AFFECTED}} घर/भवन</strong>, <strong>{{ROAD_KM_AFFECTED}} कि.मि. सडक खण्ड</strong>, र <strong>{{BRIDGES_AFFECTED}} पुल</strong><br>
+    • सडक सम्पर्क विच्छेद: <strong>{{CUT_OFF_COUNT}} बस्तीहरू</strong> अस्पताल/मुख्य बजारसँगको सडक सम्पर्कबाट विच्छेद भएका छन् ({{CONNECTED_COUNT}} सुरक्षित, {{UNKNOWN_COUNT}} नक्सांकन नभएको)।
+  </div>
+</div>
+
 <div class="footer">
   <strong>Data Sources & Attributions:</strong><br>
   Contains modified Copernicus Sentinel data 2026. | © OpenStreetMap contributors (pre-event snapshot: {{OSM_SNAPSHOT_DATE}}, ODbL).<br>

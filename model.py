@@ -1,6 +1,7 @@
-"""Small U-Net for two-channel Sentinel-1 flood segmentation.
+"""Small U-Net for Sentinel-1 flood segmentation.
 
-All layers are initialized locally; this model downloads and loads no weights.
+Supports two-band single-date VV/VH and four-band paired pre/post VV/VH
+contracts. All layers are initialized locally; no weights are downloaded.
 """
 
 import torch

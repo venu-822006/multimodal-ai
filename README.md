@@ -258,15 +258,15 @@ aimodel/
 ├── case_study_emsr927.py         # Independent EMSR927 Copernicus EMS reference comparison
 ├── stac_search.py               # Copernicus STAC API scene discovery utility
 │
-├── checkpoints/                 # Saved model weights, history, & val manifests
-│   ├── best.pt                  # Checkpoint with optimal validation flood IoU (Epoch 9)
-│   ├── latest.pt                # Checkpoint from final training iteration
-│   ├── val_manifest.json        # Serialized held-out validation pairs
+├── checkpoints/                 # Saved model weights, histories, and manifests
+│   ├── hackathon_holdout_1111005/ # Clean train/validation/test benchmark artifacts
+│   ├── best.pt                  # Earlier checkpoint; not the clean final-test model
+│   ├── latest.pt                # Checkpoint from earlier training iteration
 │   └── training_history.csv     # Per-epoch loss and validation metrics log
 │
-├── data/                        # Active local dataset (~2.83 GB)
-│   ├── processed/               # 7,108 analysis-ready 2-band float32 GeoTIFFs & masks
-│   │   ├── images/              # VV/VH dB GeoTIFFs (*_post.tif, *_pre.tif)
+├── data/                        # Active local dataset
+│   ├── processed/               # 7,108 post-event 2-band scenes and masks
+│   │   ├── images/              # VV/VH dB GeoTIFFs (*_post.tif); pre-event pairs absent
 │   │   └── masks/               # 1-band uint8 ground truth masks
 │   └── osm/                     # Cached GeoJSON snapshots from ohsome
 │
@@ -274,14 +274,16 @@ aimodel/
 │   ├── AI_MODEL_ARCHITECTURE.md # Deep mathematical & layer specification
 │   ├── API_REFERENCE.md         # CLI & backend API integration guide
 │   ├── CASE_STUDY_EMSR927.md    # EMSR927 reference evaluation guidelines
-│   ├── HIMALAYAN_EVALUATION.md  # Himalayan generalization protocol
+│   ├── HIMALAYAN_EVALUATION.md  # Clean event-held-out Himalayan evaluation
+│   ├── HACKATHON_AI_READINESS.md # Track B AI requirement status and blockers
 │   └── TESTING_STRATEGY.md      # Testing matrix & regression criteria
 │
 ├── outputs/                     # Generated job deliverables & evaluation runs
 │   ├── held_out_eval/           # Complete 1,388-scene holdout evaluation results
 │   │   ├── evaluation_report.json
 │   │   └── summary_facts.json
-│   ├── himalayan_eval/          # Unseen Himalayan 30-scene holdout results
+│   ├── himalayan_eval/          # Prior 30-scene validation-overlap report
+│   ├── hackathon_holdout_1111005_test_rerun/ # Clean 1,369-scene test predictions
 │   │   └── himalayan_evaluation_report.json
 │   ├── trishuli_case_study/     # Trishuli River flash flood demonstration
 │   ├── status.json              # Real-time state machine log
@@ -354,7 +356,7 @@ SAR segmentation in mountainous terrain is vulnerable to false positives caused 
 
 1. **Temperature Scaling:** Default $\tau = 1.0$ preserves calibrated logit distributions:
    $$p_i = \frac{\exp(z_i / \tau)}{\sum_j \exp(z_j / \tau)}$$
-2. **Probability Thresholding:** Configurable flood cutoff ($p = 0.55\text{--}0.92$) calibrated on held-out validation events via `calibrate_threshold.py`.
+2. **Probability Thresholding:** Uses the threshold calibrated for the selected checkpoint; the clean event-held-out candidate uses $p = 0.49$ from validation Event 1111006. This threshold still yields material false alarms and misses on the untouched test event.
 3. **Temporal Specular Change Verification:** When pre-event SAR imagery is available, pixels must exhibit genuine specular reflection loss:
    $$\Delta\text{dB} = \text{dB}_{\text{pre}} - \text{dB}_{\text{post}} \ge 1.5\text{ dB}$$
    Permanent water bodies, wet paddies, and static mountain shadows ($\Delta\text{dB} \approx 0$) are rejected.
@@ -588,17 +590,20 @@ Evaluated across 1,388 event-held-out scenes (events `1111005` and `1111003`) co
 
 ### 8.3 Unseen Himalayan Topography Benchmark (Event 1111005)
 
-To evaluate model resilience in severe mountain topography (deep gorges, steep slopes, layover, and shadowing), 30 held-out Himalayan scenes were evaluated independently (`outputs/himalayan_eval/himalayan_evaluation_report.json`):
+The leakage-resistant test withholds all of Event 1111005 from training and
+threshold selection. The checkpoint selected on Event 1111006 was evaluated on
+1,369 Event 1111005 scenes (`checkpoints/hackathon_holdout_1111005/test_evaluation.json`):
 
-* **Mean Flood IoU across all Himalayan scenes:** **27.88%**
-* **Mean Pixel Accuracy:** **86.52%**
-* **Inundated Mountain Scenes (4 scenes):**
-  - **Mean Flood IoU:** **59.12%**
-  - **Mean F1-Score:** **66.31%**
-  - **Precision:** **64.62%**
-  - **Recall:** **84.85%**
-* **Pixel-Weighted Metrics (1,505,280 pixels):**
-  - Pixel IoU: **20.37%** | F1: **33.85%** | Recall: **90.70%** | Accuracy: **86.52%**
+* **All-scene macro IoU / F1 / precision / recall:** 13.95% / 15.42% / 16.90% / 15.80%.
+* **Flood-positive-scene macro IoU / F1 / precision / recall:** 37.97% / 49.22% / 60.52% / 52.14%.
+* **Pixel-pooled IoU / F1 / precision / recall:** 28.58% / 44.45% / 33.28% / 66.90%.
+* Pixel accuracy is 94.85%, but only 10.34% of zero-flood scenes have no false
+  positives. The high accuracy reflects background dominance and does not
+  demonstrate reliable flood segmentation.
+
+The earlier 30-scene report used Event 1111005 while it was in a validation
+manifest and must not be treated as an untouched final test. See
+`docs/HIMALAYAN_EVALUATION.md` for the split and reproduction commands.
 
 ---
 
@@ -642,7 +647,7 @@ Every execution writes a self-contained deliverable bundle to `--out-dir`:
   "checkpoint": "best.pt",
   "val_flood_iou": 0.2468,
   "anti_hallucination_metrics": {
-    "confidence_threshold_used": 0.55,
+    "confidence_threshold_used": 0.49,
     "min_cluster_px_used": 15,
     "raw_candidates": 9960,
     "slope_hallucinations_filtered": 2100,

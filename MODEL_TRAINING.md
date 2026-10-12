@@ -108,19 +108,17 @@ The pre- and post-event rasters must have matching dimensions, CRS, and pixel
 alignment, and each must contain exactly two VV/VH bands. A single 4-band raster is also supported when its bands are ordered
 pre-VV, pre-VH, post-VV, post-VH.
 
-For an application worker, set `FLOODSIGHT_CHECKPOINT` to the validated model
-artifact path. When present, the default is
-`checkpoints/official_run/best.pt`; otherwise it falls back to
-`checkpoints/best.pt`. `FLOODSIGHT_THRESHOLD` controls the probability cutoff
-and defaults to `0.92`, the pooled-F1 optimum selected using validation event
-502. A lower `0.55` cutoff is a recall-oriented alternative, with more false
-alarms. On a partial import of the official test shard (4,029 complete scenes,
-8 events; source download was truncated), neither setting was reliable across
-events. At `0.92`, pixel-weighted IoU/precision/recall were 0.594/0.695/0.805,
-but only 42% of zero-flood scenes were completely clean; at `0.55`, only 11%
-were clean. Event performance varied substantially. These scores are
-diagnostic and must not be used to claim operational readiness. Keep checkpoint
-and threshold settings identical between batch inference and the application.
+The default checkpoint prefers
+`checkpoints/hackathon_holdout_1111005/best.pt`, then falls back to an
+`official_run` checkpoint or `checkpoints/best.pt`. If a matching
+`threshold_calibration.json` is present, inference and the application worker
+load its validation-selected threshold automatically. `FLOODSIGHT_CHECKPOINT`
+and `FLOODSIGHT_THRESHOLD` can override those defaults. The current clean
+candidate uses threshold `0.49` from validation Event 1111006; on the untouched
+1,369-scene Event 1111005 test its all-scene macro IoU/F1/precision/recall are
+0.139/0.154/0.169/0.158. Treat this as research-only and human-reviewed; do not
+claim operational reliability. Keep checkpoint and threshold settings
+identical between batch inference and the application.
 
 Every inference facts record labels the output as research-only and requires
 human review. Do not treat a flood mask or area estimate as an operational
@@ -141,13 +139,12 @@ and the share of valid pixels with entropy at least 0.5.
 - `checkpoints/training_history.csv`: training and validation loss and
   segmentation metrics for each epoch.
 
-The current four-channel run is summarized in
-`checkpoints/official_run/readiness_report.json`, with per-scene results in
-`outputs/official_run_test/evaluation_report.json`. Its held-out event was
-reserved from the downloaded training shard, not from KuroSiwo's official test
-partition. The score is a research result: held-out flood recall remains low,
-and the WebDataset metadata lacks a CRS, so imported predictions are not
-geographically located until georeferenced source rasters are supplied.
+The clean event-held-out benchmark is summarized in
+`checkpoints/hackathon_holdout_1111005/test_evaluation.json`. It trained on
+Events 1111002/1111003/1111004, selected the checkpoint and threshold using
+Event 1111006, and held Event 1111005 out for one final evaluation across 1,369
+scenes. Its results show substantial false alarms and misses; it is a research
+benchmark, not evidence of operational readiness.
 
 Flood IoU is computed only for class `1`; nodata pixels (`255`) are excluded.
 The checkpoint is a trained artifact only after this command has run over real,
@@ -161,19 +158,18 @@ still a limited research benchmark; a broader evaluation should also use the
 dataset's official test partition and additional geographic regions.
 
 The current artifact is not cleared for operational flood decisions. The
-partial official-test evaluation shows substantial event-to-event error, and
-source tiles lack a CRS.
-When CRS is absent, inference now reports pixel counts/fractions but leaves
-square-kilometer area and metric resolution unknown. Before operational use,
-evaluate on the official test split and independent regions, georeference the
-inputs, set and document the operating threshold on validation data, and have
-domain reviewers assess missed-flood and false-alarm costs.
+held-out event shows substantial event-level error. Inference withholds area
+and bounding-box metrics if CRS or pixel scale is missing or implausible; the
+available benchmark tiles have placeholder georeferencing. Before operational
+use, evaluate on additional independent events and regions, provide verified
+georeferencing, fix the operating threshold using validation data only, and
+have domain reviewers assess missed-flood and false-alarm costs.
 
-An event-balanced sampling experiment was run separately in
-`checkpoints/official_event_balanced`. It stopped after six epochs; its best
-validation flood IoU was `0.3584`, below the selected baseline's `0.3762`, so
-its checkpoint was not promoted. This experiment does not close the external
-validation gap. No evidence currently supports a 90% operational reliability
-claim. Pixel accuracy alone is unsuitable for that claim because non-flood
-background dominates the image area. Keep operational decisions disabled and
-require analyst review while the documented deployment blockers remain.
+The leakage-resistant event-held-out training run and its manifests are in
+`checkpoints/hackathon_holdout_1111005`. Its validation-selected threshold is
+recorded in `threshold_calibration.json`; do not tune it using the test report.
+No evidence supports a 90% operational reliability claim. Pixel accuracy alone
+is unsuitable because non-flood background dominates the image area. Keep
+operational decisions disabled and require analyst review while the documented
+data and validation blockers remain. See
+`docs/HACKATHON_AI_READINESS.md` for the requirement-by-requirement status.

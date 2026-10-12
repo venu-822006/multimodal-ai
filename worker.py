@@ -305,15 +305,20 @@ def run_pipeline_worker(ctx: JobContext) -> bool:
         # 5. FLOOD_MAPPING
         # ─────────────────────────────────────────────────────────────────────
         ctx.set_state(JobState.FLOOD_MAPPING, "Running log-ratio baseline and U-Net flood model.")
-        from predict import load_checkpoint, predict_one
+        from predict import (
+            default_checkpoint_path,
+            default_confidence_threshold,
+            load_checkpoint,
+            predict_one,
+        )
         import torch
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        default_checkpoint = "checkpoints/official_run/best.pt" if Path("checkpoints/official_run/best.pt").exists() else "checkpoints/best.pt"
-        ckpt_path = Path(os.environ.get("FLOODSIGHT_CHECKPOINT", default_checkpoint))
+        default_checkpoint = default_checkpoint_path()
+        ckpt_path = Path(os.environ.get("FLOODSIGHT_CHECKPOINT", str(default_checkpoint)))
         if not ckpt_path.exists():
             raise FileNotFoundError(f"Configured model checkpoint not found: {ckpt_path}. Train or configure FLOODSIGHT_CHECKPOINT.")
 
-        confidence_threshold = float(os.environ.get("FLOODSIGHT_THRESHOLD", "0.92"))
+        confidence_threshold = default_confidence_threshold(ckpt_path)
         if not 0.0 <= confidence_threshold <= 1.0:
             raise ValueError("FLOODSIGHT_THRESHOLD must be between 0 and 1.")
 

@@ -1,12 +1,13 @@
 # FloodSight AI — AI Model Architecture Specification
 
 ## 1. Executive Summary
-The selected FloodSight checkpoint is a prototype semantic segmentation
-network for Sentinel-1 flood extent. It consumes four bands in the order
-pre-event VV, pre-event VH, post-event VV, post-event VH and predicts
-background versus flood. The inference code also supports legacy two-band
-checkpoints. Neither checkpoint learns a debris class; the separate debris
-candidate module is heuristic and is not verified as debris by this model.
+The current clean event-held-out FloodSight checkpoint is a prototype
+segmentation network for Sentinel-1 flood extent. It consumes post-event VV/VH
+and predicts background versus flood. The architecture and inference code
+support four-band paired pre/post VV/VH checkpoints, but no paired pre-event
+training data is available for this candidate. The model does not learn a
+debris class; the separate debris candidate module is heuristic and is not
+verified as debris by this model.
 
 ---
 
@@ -14,11 +15,10 @@ candidate module is heuristic and is not verified as debris by this model.
 The network is implemented in PyTorch (`model.py`) and initialized completely from scratch using Kaiming normal initialization. It requires no external pre-trained weights, conforming strictly to hackathon air-gapped guidelines.
 
 ### Layer Blueprint
-* **Input Layer:** the selected checkpoint uses 4 channels ($C=4$):
-  - Bands 1–2: pre-event Sentinel-1 VV/VH (in decibels, dB)
-  - Bands 3–4: post-event Sentinel-1 VV/VH (in decibels, dB)
-  - The module's constructor defaults to 2 channels for legacy single-date
-    checkpoints; training infers 2 or 4 channels from the prepared imagery.
+* **Input Layer:** the current clean checkpoint uses 2 post-event channels
+  ($C=2$), Sentinel-1 VV/VH in decibels. Four-band checkpoints use pre-event
+  VV/VH followed by post-event VV/VH. Training records the selected input
+  contract in the checkpoint.
 * **Encoder:** 4 downsampling stages with double $3\times3$ convolutions, Batch Normalization, and ReLU activations:
   - Stage 1: $C \rightarrow 24$ channels (spatial resolution: $H \times W$)
   - Stage 2: $24 \rightarrow 48$ channels (Spatial resolution: $H/2 \times W/2$)
@@ -91,10 +91,11 @@ SAR segmentation neural networks commonly suffer from false-positive hallucinati
      $$p_i = \frac{\exp(z_i / \tau)}{\sum_j \exp(z_j / \tau)}$$
    - Prevents artificial overconfidence spikes before thresholding.
 2. **Probability Thresholding:**
-   - The current inference default is $0.92$, selected to maximize pooled F1
-     on validation event 502. A partial official-test evaluation shows that
-     this threshold does not generalize reliably across events. It is a
-     research operating point, not an operationally validated threshold.
+   - The current clean-event checkpoint uses $0.49$, selected to maximize
+     pooled F1 on validation Event 1111006. The untouched Event 1111005 test
+     still shows substantial errors, so this remains a research operating
+     point, not an operationally validated threshold. Inference reads the
+     matching checkpoint calibration automatically when available.
 3. **Terrain filtering:**
    - A slope mask can be passed to the prediction filter, but the current worker does not acquire or supply a DEM. Do not claim DEM-based filtering for worker outputs unless a real, aligned DEM slope raster is integrated and recorded in the run provenance. A fixed slope cutoff also cannot reliably distinguish radar layover from real water in every terrain/aspect/orbit configuration.
 4. **Temporal Change Consistency Check:**
@@ -131,7 +132,13 @@ and balanced composite loss (`flood_weight = 8.0`).
 * **Validation Specificity:** **90.15%** (false positives reduced by >90% compared to earlier unweighted runs)
 * **Validation F1-Score:** **0.3728**
 
-### Independent Himalayan Generalization Benchmark (Event 1111005):
-* Evaluated across 50 held-out Himalayan scenes in steep mountain topography:
-  - **Inundated Flood Scenes (7 scenes):** Mean Flood IoU **58.27%**, Precision **76.02%**, Recall **75.40%**, F1-Score **0.6627**.
-  - **All Scenes (including 43 dry gorge tiles):** Mean Flood IoU **10.16%**, Pixel Accuracy **82.99%**, Specificity **83.22%**.
+### Clean Event-Held-Out Benchmark (Event 1111005):
+* Trained on Events 1111002/1111003/1111004, selected checkpoint on 1111006,
+  and evaluated once on 1,369 scenes from 1111005. The threshold was selected
+  using validation data only.
+* All-scene macro IoU/F1/precision/recall: **13.95% / 15.42% / 16.90% / 15.80%**.
+* Flood-positive-scene macro IoU/F1/precision/recall: **37.97% / 49.22% / 60.52% / 52.14%**.
+* Pixel-pooled IoU/F1/precision/recall: **28.58% / 44.45% / 33.28% / 66.90%**.
+* Pixel accuracy is 94.85%, but only 10.34% of zero-flood scenes are completely
+  clean. Background-heavy accuracy is not a flood-reliability score. Full
+  results: `checkpoints/hackathon_holdout_1111005/test_evaluation.json`.

@@ -4,8 +4,9 @@ predict.py  -  FloodSight AI | Inference & facts.json Generator
 Loads a trained checkpoint (checkpoints/best.pt) and runs inference on a
 preprocessed Sentinel-1 scene GeoTIFF to produce:
 
-  1. flood_mask_predicted.tif  - georeferenced binary flood mask (0/1/255)
-  2. facts.json                - aggregated flood statistics consumed by the
+  1. flood_mask_predicted.tif  - binary flood mask (0/1/255)
+  2. *_uncertainty.tif         - normalized predictive entropy, not calibrated
+  3. facts.json                - aggregated flood statistics consumed by the
                                  FloodSight dashboard and situation report
 
 The facts.json schema (matches the rest of the FloodSight AI pipeline):
@@ -17,7 +18,7 @@ The facts.json schema (matches the rest of the FloodSight AI pipeline):
   "bbox":               [west, south, east, north],  -- WGS-84 bounding box
   "crs":                source raster CRS,
   "bbox_crs":           "EPSG:4326" when the source CRS is known,
-  "pixel_area_m2":      float,   -- geodesic area estimate at scene center
+  "pixel_area_m2":      float,   -- area only for plausible CRS and pixel scale
   "pixel_resolution_approx_m": float,
   "model_config":       {...},   -- stored from checkpoint
   "normalization":      {...},   -- stored from checkpoint
@@ -75,6 +76,31 @@ from model import create_unet_model
 NODATA_OUT    = 255
 FLOOD_CLASS   = 1
 DEFAULT_RES_M = 10.0   # Sentinel-1 GRD IW: ~10 m ground spacing
+
+
+def default_checkpoint_path() -> Path:
+    """Prefer the checkpoint evaluated on a completely held-out event."""
+    candidates = (
+        Path("checkpoints/hackathon_holdout_1111005/best.pt"),
+        Path("checkpoints/official_run/best.pt"),
+        Path("checkpoints/best.pt"),
+    )
+    return next((path for path in candidates if path.is_file()), candidates[-1])
+
+
+def default_confidence_threshold(checkpoint_path: Path) -> float:
+    """Use the threshold calibrated for this checkpoint, or neutral argmax fallback."""
+    override = os.environ.get("FLOODSIGHT_THRESHOLD")
+    if override is not None:
+        return float(override)
+    calibration_path = checkpoint_path.parent / "threshold_calibration.json"
+    if calibration_path.is_file():
+        with calibration_path.open("r", encoding="utf-8") as handle:
+            calibration = json.load(handle)
+        threshold = calibration.get("selected_threshold")
+        if isinstance(threshold, (int, float)) and 0 <= threshold <= 1:
+            return float(threshold)
+    return 0.5
 
 
 # ---------------------------------------------------------------------------
@@ -568,7 +594,8 @@ def predict_one(
     with open(facts_path, "w", encoding="utf-8") as f:
         json.dump(facts, f, indent=2)
     print(f"    [OK] facts.json -> {facts_path}")
-    area_text = f"{facts['flood_area_km2']:.4f} km2" if facts['flood_area_km2'] is not None else "unknown area (CRS unavailable)"
+    area_text = (f"{facts['flood_area_km2']:.4f} km2" if facts['flood_area_km2'] is not None
+                 else "unknown area (CRS or pixel scale unavailable/implausible)")
     print(f"    Flood area: {area_text}  ({facts['flood_fraction'] * 100:.2f}% of valid pixels)")
 
     return facts
@@ -584,9 +611,9 @@ def parse_args():
                    help="Pre-event 2-band VV/VH GeoTIFF paired with --scene for a 4-channel checkpoint")
     p.add_argument("--scene-dir",   type=Path, help="Directory of scene GeoTIFFs (batch predict)")
     p.add_argument("--manifest",    type=Path, help="JSON manifest of scenes to predict on (e.g. val_manifest.json)")
-    default_checkpoint = "checkpoints/official_run/best.pt" if Path("checkpoints/official_run/best.pt").exists() else "checkpoints/best.pt"
+    default_checkpoint = default_checkpoint_path()
     p.add_argument("--checkpoint", type=Path,
-                   default=Path(os.environ.get("FLOODSIGHT_CHECKPOINT", default_checkpoint)))
+                   default=Path(os.environ.get("FLOODSIGHT_CHECKPOINT", str(default_checkpoint))))
     p.add_argument("--out-dir",     type=Path, default=Path("outputs"))
     p.add_argument("--patch-size",  type=int,  default=None,
                    help="Override patch size (default: from checkpoint)")
@@ -594,9 +621,8 @@ def parse_args():
                    help="Sliding window stride (default: patch_size // 2)")
     p.add_argument("--temperature", type=float, default=1.0,
                    help="Logit temperature (1.0 leaves model probabilities unchanged; calibration must be validated).")
-    p.add_argument("--confidence-threshold", type=float,
-                   default=float(os.environ.get("FLOODSIGHT_THRESHOLD", "0.92")),
-                   help="Flood probability cutoff; default 0.92 is the validation F1-selected operating point.")
+    p.add_argument("--confidence-threshold", type=float, default=None,
+                   help="Flood probability cutoff; defaults to the checkpoint's validation calibration when available.")
     p.add_argument("--min-cluster-px", type=int, default=0,
                    help="Remove flood components smaller than this size; 0 disables morphology filtering.")
     p.add_argument("--save-probability", action="store_true",
@@ -607,6 +633,8 @@ def parse_args():
 
 def main():
     args = parse_args()
+    if args.confidence_threshold is None:
+        args.confidence_threshold = default_confidence_threshold(args.checkpoint)
 
     if args.device == "auto":
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -688,7 +716,7 @@ def main():
         if len(known_areas) == len(all_facts):
             print(f"  Total estimated flood area: {sum(known_areas):.4f} km2")
         else:
-            print(f"  Total estimated flood area unavailable for {len(all_facts) - len(known_areas)} scene(s) without a metric CRS.")
+            print(f"  Total estimated flood area unavailable for {len(all_facts) - len(known_areas)} scene(s) without a valid metric CRS/pixel scale.")
 
     print("\nDone.")
 
