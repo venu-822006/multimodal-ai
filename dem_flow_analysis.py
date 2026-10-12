@@ -273,11 +273,15 @@ def analyze_downstream_exposure(
     for s in settlements:
         geom = shape(s.get("geometry", {}))
         pt = geom.centroid if geom.geom_type != "Point" else geom
-        if transform_geometry(to_local, pt).intersects(screening_corridor):
+        local_pt = transform_geometry(to_local, pt)
+        if local_pt.intersects(screening_corridor):
             exposed.append({
                 "name": s.get("properties", {}).get("name", "Downstream Community"),
                 "status": "NEAR_TERRAIN_SCREENING_PATH",
                 "warning": "Terrain-only screening proximity; not a validated flood-risk forecast",
+                "longitude": float(pt.x),
+                "latitude": float(pt.y),
+                "distance_to_screening_path_m": round(float(local_pt.distance(local_line)), 1),
             })
 
     return exposed

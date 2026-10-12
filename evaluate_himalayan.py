@@ -1,15 +1,16 @@
 """
 evaluate_himalayan.py  —  FloodSight AI | Unseen Himalayan Scenes Benchmark
 ============================================================================
-Evaluates FloodUNet specifically on unseen Himalayan flood events that were
-held out during training, satisfying Page 3 of the problem statement:
+Evaluates FloodUNet specifically on unseen Himalayan test events that were
+held out from both training and model selection:
   "Show how well it works on Himalayan scenes it has never seen."
 
 Guarantees:
-  1. Only evaluates scenes from the held-out Himalayan event (e.g. Event 1111005).
-  2. Measures generalization to steep topography and deep gorge terrain.
-  3. Reports Flood IoU, F1-Score, Precision, Recall, and Accuracy.
-  4. Exports structured JSON benchmark report and terminal summary table.
+  1. Reads only test pairs from a dedicated test manifest.
+  2. Rejects event IDs used for training or validation/model selection.
+  3. Measures generalization to steep topography and deep gorge terrain.
+  4. Reports Flood IoU, F1-Score, Precision, Recall, and Accuracy.
+  5. Exports structured JSON benchmark report and terminal summary table.
 """
 
 import argparse
@@ -41,22 +42,29 @@ def evaluate_unseen_himalayan_scenes(
     with open(manifest_path, "r", encoding="utf-8") as f:
         manifest_data = json.load(f)
 
-    # Filter strictly to the explicitly identified Himalayan validation events.
-    val_pairs = manifest_data.get("val_pairs", [])
-    himalayan_pairs = [p for p in val_pairs if p.get("event_id") in {"1111005", "1111003"}]
-    if not himalayan_pairs:
-        raise ValueError(
-            "The validation manifest has no held-out Himalayan events 1111005 or 1111003. "
-            "Refusing to label unrelated scenes as a Himalayan benchmark."
-        )
-    if max_scenes < 1:
-        raise ValueError("max_scenes must be at least 1.")
-
-    selected_pairs = himalayan_pairs[:max_scenes]
-    print(f"\n  [Himalayan Benchmark] Selected {len(selected_pairs)} unseen Himalayan scenes from events {manifest_data.get('val_event_ids')}")
-
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model, mean, std, p_size, ckpt = load_checkpoint(checkpoint_path, device)
+    test_pairs = manifest_data.get("test_pairs", [])
+    if not test_pairs:
+        raise ValueError("A dedicated test manifest with test_pairs is required; validation pairs are not an unseen test.")
+    train_events = {str(value) for value in ckpt.get("train_events", [])}
+    val_events = {str(value) for value in ckpt.get("val_events", [])}
+    declared_test_events = {str(value) for value in ckpt.get("test_events", [])}
+    manifest_test_events = {str(value) for value in manifest_data.get("test_event_ids", [])}
+    if not declared_test_events or not manifest_test_events:
+        raise ValueError("Checkpoint and test manifest must record event split metadata to verify an unseen test.")
+    if manifest_test_events != declared_test_events:
+        raise ValueError("The manifest test events do not match the checkpoint's recorded test events.")
+    if manifest_test_events & (train_events | val_events):
+        raise ValueError("Test event leakage detected: an evaluation event was used in training or model selection.")
+    selected_pairs = [p for p in test_pairs if str(p.get("event_id")) in manifest_test_events]
+    if not selected_pairs:
+        raise ValueError("The test manifest contains no scenes for its declared held-out test events.")
+    if max_scenes < 0:
+        raise ValueError("max_scenes must be zero (all scenes) or a positive scene limit.")
+    if max_scenes > 0:
+        selected_pairs = selected_pairs[:max_scenes]
+    print(f"\n  [Himalayan Benchmark] Evaluating {len(selected_pairs)} test scenes from unseen events {sorted(manifest_test_events)}")
 
     out_dir.mkdir(parents=True, exist_ok=True)
     results = []
@@ -101,6 +109,8 @@ def evaluate_unseen_himalayan_scenes(
     report = {
         "benchmark": "Unseen Himalayan Flood Generalization Benchmark",
         "held_out_events": list(set(r["event_id"] for r in results)),
+        "training_events": sorted(train_events),
+        "validation_events": sorted(val_events),
         "scenes_evaluated": len(results),
         "checkpoint_used": checkpoint_path.name,
         "summary_metrics": {
@@ -137,10 +147,10 @@ def evaluate_unseen_himalayan_scenes(
 
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--manifest", type=Path, default=Path("checkpoints/val_manifest.json"))
-    p.add_argument("--checkpoint", type=Path, default=Path("checkpoints/best.pt"))
+    p.add_argument("--manifest", type=Path, default=Path("checkpoints/hackathon_holdout_1111005/test_manifest.json"))
+    p.add_argument("--checkpoint", type=Path, default=Path("checkpoints/hackathon_holdout_1111005/best.pt"))
     p.add_argument("--out-dir", type=Path, default=Path("outputs/himalayan_eval"))
-    p.add_argument("--max-scenes", type=int, default=30)
+    p.add_argument("--max-scenes", type=int, default=0, help="Maximum test scenes; 0 evaluates the complete test manifest")
     args = p.parse_args()
 
     evaluate_unseen_himalayan_scenes(

@@ -77,13 +77,13 @@ All frontend components, situation reports, and summary statistics read strictly
   "crs": "EPSG:4326",
   "pixel_resolution_approx_m": 10.0,
   "checkpoint": "best.pt",
-  "val_flood_iou": 0.164,
+  "val_flood_iou": 0.3894,
   "anti_hallucination_metrics": {
     "raw_candidates": 996,
     "slope_hallucinations_filtered": 210,
     "temporal_false_positives_filtered": 180,
     "speckle_noise_pixels_filtered": 154,
-    "verified_flood_pixels": 452
+    "retained_flood_candidate_pixels": 452
   },
   "buildings_affected": 142,
   "road_length_affected_km": 18.4,

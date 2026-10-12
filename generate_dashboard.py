@@ -125,6 +125,7 @@ def render_dashboard(
         if uncertainty_bounds else "null"
     )
     settlements = facts.get("settlements", [])
+    downstream_candidates = facts.get("dem_flow_analysis", {}).get("downstream_communities_near_screening_path", [])
     bbox = facts.get("bbox", [85.1, 27.8, 85.5, 28.1])
     center = [(bbox[1] + bbox[3]) / 2, (bbox[0] + bbox[2]) / 2]
 
@@ -178,7 +179,7 @@ header{padding:18px 24px;background:#102a43;color:white}header h1{margin:0;font-
 <section class="cards">__CARDS__</section><div id="map" role="application" aria-label="Interactive flood extent map"></div>
 <p class="note">__ATTRIBUTION__ Red tint shows normalized predictive entropy (higher means more model ambiguity); it is uncalibrated and does not measure geographic-shift uncertainty. Access-loss markers are a model scenario: road edges intersecting the mapped flood candidate plus a 30 m buffer are treated as impassable. This does not confirm road closure; field verification is required. Debris markers are experimental surface-change candidates, not a validated debris classifier. Satellite revisit timing, terrain effects, and OSM coverage apply.</p>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script>
-const flood=__FLOOD__, debris=__DEBRIS__, roads=__ROADS__, hospitals=__HOSPITALS__, towns=__TOWNS__, settlements=__SETTLEMENTS__, flowPath=__FLOW_PATH__, assets=__ASSETS__, uncertaintyLayer=__UNCERTAINTY__;
+const flood=__FLOOD__, debris=__DEBRIS__, roads=__ROADS__, hospitals=__HOSPITALS__, towns=__TOWNS__, settlements=__SETTLEMENTS__, downstreamCandidates=__DOWNSTREAM_CANDIDATES__, flowPath=__FLOW_PATH__, assets=__ASSETS__, uncertaintyLayer=__UNCERTAINTY__;
 const map=L.map('map').setView(__CENTER__,9);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(map);
 const floodLayer=L.geoJSON(flood,{style:{color:'#c2410c',weight:1,fillColor:'#f97316',fillOpacity:.5},onEachFeature:(f,l)=>l.bindPopup('Mapped inundation')}).addTo(map);
@@ -189,11 +190,12 @@ const affectedRoadLayer=L.geoJSON(assets.roads||{type:'FeatureCollection',featur
 const bridgeLayer=L.geoJSON(assets.bridges||{type:'FeatureCollection',features:[]},{style:{color:'#7f1d1d',weight:4},onEachFeature:(f,l)=>l.bindPopup('Bridge within 20 m of mapped inundation; damage unconfirmed')});
 const hospitalLayer=L.geoJSON(hospitals,{pointToLayer:(f,latlng)=>L.circleMarker(latlng,{radius:6,color:'#2563eb',fillOpacity:.9}),onEachFeature:(f,l)=>l.bindPopup('Medical facility: '+escapeHtml((f.properties&&f.properties.name)||'Unnamed'))});
 const townLayer=L.geoJSON(towns,{pointToLayer:(f,latlng)=>L.circleMarker(latlng,{radius:5,color:'#0f766e',fillOpacity:.9}),onEachFeature:(f,l)=>l.bindPopup('Town: '+escapeHtml((f.properties&&f.properties.name)||'Unnamed'))});
+const downstreamLayer=L.layerGroup(downstreamCandidates.filter(s=>Number.isFinite(s.longitude)&&Number.isFinite(s.latitude)).map(s=>L.circleMarker([s.latitude,s.longitude],{radius:7,color:'#7c3aed',fillColor:'#c4b5fd',fillOpacity:.9}).bindPopup('<b>'+escapeHtml(s.name||'Community')+'</b><br>Near terrain-only screening path; not a flood-risk forecast<br>Distance to path: '+escapeHtml(s.distance_to_screening_path_m)+' m')));
 const colors={CUT_OFF:'#dc2626',CONNECTED:'#16a34a',UNKNOWN:'#64748b'};
 const settlementLayer=L.layerGroup(settlements.filter(s=>Number.isFinite(s.longitude)&&Number.isFinite(s.latitude)).map(s=>{const status=s.state==='CUT_OFF'?'POTENTIALLY CUT OFF (MODEL)':(s.state||'UNKNOWN');return L.circleMarker([s.latitude,s.longitude],{radius:6,color:colors[s.state]||colors.UNKNOWN,fillOpacity:.9}).bindPopup('<b>'+escapeHtml(s.settlement||'Unnamed settlement')+'</b><br>Modelled status: '+escapeHtml(status)+(s.target?'<br>Target: '+escapeHtml(s.target):'')+(s.reason?'<br>'+escapeHtml(s.reason):''))}));
 const flowPathLayer=L.geoJSON(flowPath,{style:{color:'#0284c7',weight:4,dashArray:'6, 6'},onEachFeature:(f,l)=>l.bindPopup('<b>Terrain-only D8 downslope screening path (not a flood forecast)</b><br>Length: '+(f.properties?.length_km||0)+' km<br>Elevation drop: '+(f.properties?.elevation_drop_m||0)+' m<br>Terrain gradient: '+(f.properties?.gradient_m_per_km||0)+' m/km')});
 if(flowPath.features&&flowPath.features.length>0){flowPathLayer.addTo(map);}
-const overlays={'Mapped inundation':floodLayer,'Possible debris / surface change (experimental)':debrisLayer,'Pre-event roads':roadLayer,'Potentially affected buildings':buildingLayer,'Roads intersecting inundation':affectedRoadLayer,'Bridges near inundation':bridgeLayer,'Settlements':settlementLayer,'Towns':townLayer,'Medical facilities':hospitalLayer,'Terrain-only path (not forecast)':flowPathLayer};
+const overlays={'Mapped inundation':floodLayer,'Possible debris / surface change (experimental)':debrisLayer,'Pre-event roads':roadLayer,'Potentially affected buildings':buildingLayer,'Roads intersecting inundation':affectedRoadLayer,'Bridges near inundation':bridgeLayer,'Settlements':settlementLayer,'Towns':townLayer,'Medical facilities':hospitalLayer,'Near terrain screen (review)':downstreamLayer,'Terrain-only path (not forecast)':flowPathLayer};
 if(uncertaintyLayer){overlays['Predictive entropy (uncalibrated)']=uncertaintyLayer;}
 L.control.layers(null,overlays,{collapsed:false}).addTo(map);
 map.fitBounds([[__BBOX__[1],__BBOX__[0]],[__BBOX__[3],__BBOX__[2]]]);
@@ -206,6 +208,7 @@ function escapeHtml(x){return String(x).replace(/[&<>"']/g,c=>({'&':'&amp;','<':
         .replace("__ROADS__", _safe_json(roads))
         .replace("__HOSPITALS__", _safe_json(hospitals))
         .replace("__TOWNS__", _safe_json(towns))
+        .replace("__DOWNSTREAM_CANDIDATES__", _safe_json(downstream_candidates))
         .replace("__SETTLEMENTS__", _safe_json(settlements))
         .replace("__FLOW_PATH__", _safe_json(flow_path_geojson))
         .replace("__ASSETS__", _safe_json(assets))

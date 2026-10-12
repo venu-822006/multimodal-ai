@@ -172,9 +172,6 @@ def acquire_scene_pair(ctx: JobContext, cache_dir: Path) -> tuple[Path, Path]:
     post_path = cache_dir / f"{ctx.job_id}_post.tif"
     if pre_path.exists() and post_path.exists():
         return pre_path, post_path
-    if post_path.exists():
-        return None, post_path
-
     raise FileNotFoundError(
         f"Real Sentinel-1 imagery not provided for target bounding box {ctx.bbox} and flood date {ctx.flood_date}. "
         "Supply real Sentinel-1 dual-pol (VV/VH dB) GeoTIFFs via --post-image (and optional --pre-image). "
@@ -263,6 +260,33 @@ def validate_prepared_sar_pair(pre_path: Path, post_path: Path, flood_date: str)
         "same_orbit_verified_from_tags": orbit_verified,
         "event_order_verified_from_tags": dates_verified,
         "operator_must_verify_pair_when_tags_missing": not (orbit_verified and dates_verified),
+    }
+
+
+def validate_pair_against_discovery(pair_validation: dict, stac_results: dict) -> dict:
+    """Cross-check tagged input orbit metadata against the selected STAC pair."""
+    best_pair = (stac_results or {}).get("best_pair")
+    if not best_pair:
+        return {"stac_orbit_consistency": "not_checkable_no_discovered_pair"}
+    if not pair_validation.get("same_orbit_verified_from_tags"):
+        return {"stac_orbit_consistency": "not_checkable_input_orbit_tags_missing"}
+
+    selected_orbit = str(best_pair.get("relative_orbit", "")).strip()
+    selected_direction = str(best_pair.get("direction", "")).strip().casefold()
+    rasters = pair_validation.get("rasters", [])
+    matches = all(
+        str(raster.get("relative_orbit", "")).strip() == selected_orbit
+        and str(raster.get("orbit_direction", "")).strip().casefold() == selected_direction
+        for raster in rasters
+    )
+    if not matches:
+        raise ValueError(
+            "The supplied rasters' orbit tags do not match the best same-orbit pair "
+            "discovered for this AOI/date. Verify the source products or choose the matching pair."
+        )
+    return {
+        "stac_orbit_consistency": "input_tags_match_selected_relative_orbit_and_direction",
+        "input_files_linked_to_discovered_pair": False,
     }
 
 
@@ -365,6 +389,7 @@ def run_pipeline_worker(ctx: JobContext) -> bool:
         print(f"  [Worker] Pre-flood scene:  {pre_scene.name}")
         print(f"  [Worker] Post-flood scene: {post_scene.name}")
         pair_validation = validate_prepared_sar_pair(pre_scene, post_scene, ctx.flood_date)
+        pair_validation.update(validate_pair_against_discovery(pair_validation, stac_results))
 
         # ─────────────────────────────────────────────────────────────────────
         # 4. PREPROCESSING
@@ -433,7 +458,7 @@ def run_pipeline_worker(ctx: JobContext) -> bool:
             round(float(debris_px * pixel_area_m2 / 1e6), 6)
             if pixel_area_m2 is not None else None
         )
-        facts["debris_confidence"] = debris_res.get("debris_confidence")
+        facts["debris_heuristic_score"] = debris_res.get("debris_heuristic_score")
 
         # Cross-Sensor Optical Verification (Sentinel-2 clear-sky NDWI)
         optical_pair = acquire_optical_pair(ctx, cache_dir)
@@ -444,7 +469,10 @@ def run_pipeline_worker(ctx: JobContext) -> bool:
                 green_path, nir_path, flood_mask_path, ctx.out_dir / "optical"
             )
         else:
-        facts["cross_sensor_optical"] = {"status": "not_available", "note": "No real Sentinel-2 bands were supplied; no optical confirmation was used."}
+            facts["cross_sensor_optical"] = {
+                "status": "not_available",
+                "note": "No real Sentinel-2 bands were supplied; no optical confirmation was used.",
+            }
 
         # ─────────────────────────────────────────────────────────────────────
         # 6. DAMAGE_ANALYSIS
@@ -496,7 +524,7 @@ def run_pipeline_worker(ctx: JobContext) -> bool:
             "sentinel1": {
                 "pre_raster": pre_scene.name,
                 "post_raster": post_scene.name,
-                "source": "caller-supplied analysis-ready rasters; upstream provider and product metadata were not independently verified",
+                "source": "caller-supplied analysis-ready rasters; file identity and provider product records are not verified against STAC",
             },
             "sentinel1_pairing": {
                 "stac_search_status": stac_results.get("status", "SEARCH_ERROR_OR_UNAVAILABLE"),

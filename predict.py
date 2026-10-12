@@ -308,9 +308,14 @@ def apply_anti_hallucination_filters(
         temporal_removed_px = int((candidate & no_change).sum())
         candidate  = candidate & (~no_change)
 
-    # 3. Morphological speckle removal + hole filling
-    cleaned  = remove_small_objects(candidate, max_size=min_cluster_px)
-    cleaned  = remove_small_holes(cleaned, max_size=min_cluster_px)
+    # 3. Optional morphological filtering. The defaults intentionally leave
+    # the mask unchanged; scikit-image uses `min_size` and `area_threshold`
+    # (not `max_size`) for these operations.
+    if min_cluster_px > 0:
+        cleaned = remove_small_objects(candidate, min_size=min_cluster_px)
+        cleaned = remove_small_holes(cleaned, area_threshold=min_cluster_px)
+    else:
+        cleaned = candidate
     final_px = int(cleaned.sum())
 
     speckle_filtered = max(0, initial_px - slope_removed_px - temporal_removed_px - final_px)
@@ -321,7 +326,7 @@ def apply_anti_hallucination_filters(
         "slope_hallucinations_filtered":    slope_removed_px,
         "temporal_false_positives_filtered":temporal_removed_px,
         "speckle_noise_pixels_filtered":    speckle_filtered,
-        "verified_flood_pixels":            final_px,
+        "retained_flood_candidate_pixels":   final_px,
         "noise_reduction_pct": round(
             100.0 * (initial_px - final_px) / max(initial_px, 1), 1
         ),

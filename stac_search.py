@@ -38,6 +38,10 @@ if hasattr(sys.stderr, "reconfigure"):
 STAC_API_URL = "https://stac.dataspace.copernicus.eu/v1/"
 
 
+def _utc_isoformat(value: datetime) -> str:
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
 def score_scene_pair(pre_scene: dict, post_scene: dict, flood_date: datetime) -> float:
     """
     Score a pair of Sentinel-1 scenes based on orbital geometry and temporal spacing.
@@ -105,6 +109,8 @@ def search_sentinel_scenes(
     print(f"         Time window: {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
 
     scenes_found = []
+    scenes_rejected_missing_dual_pol = 0
+    catalog_items_seen = 0
     client = None
     try:
         from pystac_client import Client
@@ -112,21 +118,37 @@ def search_sentinel_scenes(
         search = client.search(
             collections=["sentinel-1-grd"],
             bbox=bbox,
-            datetime=f"{start_date.isoformat()}Z/{end_date.isoformat()}Z",
+            datetime=f"{_utc_isoformat(start_date)}/{_utc_isoformat(end_date)}",
             query={"sar:instrument_mode": {"eq": "IW"}},
-            max_items=100
+            max_items=500
         )
         for item in search.items():
+            catalog_items_seen += 1
             props = item.properties
             dt_str = props.get("datetime")
             rel_orbit = props.get("sat:relative_orbit") or props.get("s1:relative_orbit_number")
             direction = props.get("sat:orbit_state") or props.get("s1:orbit_direction")
+            polarizations = props.get("sar:polarizations")
+
+            # The inference contract requires both VV and VH. Do not pair a
+            # single-polarization acquisition or guess from the product name.
+            if isinstance(polarizations, str):
+                polarizations = polarizations.replace(",", " ").split()
+            normalized_polarizations = {
+                str(value).upper() for value in (polarizations or [])
+            }
+            if not {"VV", "VH"}.issubset(normalized_polarizations):
+                scenes_rejected_missing_dual_pol += 1
+                continue
+            if not dt_str or not rel_orbit or not direction:
+                continue
 
             scenes_found.append({
                 "id": item.id,
                 "datetime": dt_str,
-                "relative_orbit": rel_orbit,
-                "direction": direction,
+                "relative_orbit": str(rel_orbit),
+                "direction": str(direction).upper(),
+                "polarizations": sorted(normalized_polarizations),
                 "bbox": item.bbox,
                 "assets": {key: asset.href for key, asset in item.assets.items()}
             })
@@ -168,8 +190,11 @@ def search_sentinel_scenes(
         "bbox": bbox,
         "flood_date": flood_date_str,
         "stac_endpoint": STAC_API_URL,
-        "time_window_utc": [start_date.isoformat(), end_date.isoformat()],
+        "time_window_utc": [_utc_isoformat(start_date), _utc_isoformat(end_date)],
+        "catalog_items_seen": catalog_items_seen,
         "total_scenes_found": len(scenes_found),
+        "scenes_rejected_missing_dual_pol": scenes_rejected_missing_dual_pol,
+        "required_polarizations": ["VV", "VH"],
         "valid_same_orbit_pairs": len(pairs),
         "best_pair": pairs[0] if pairs else None,
         "all_pairs": pairs[:5]
@@ -194,11 +219,11 @@ def search_sentinel_scenes(
     result["sentinel2_scenes"] = []
     try:
         s2_start = flood_date
-        s2_end = flood_date + timedelta(days=14)
+        s2_end = flood_date + timedelta(days=15) - timedelta(microseconds=1)
         s2_search = client.search(
             collections=["sentinel-2-l2a"],
             bbox=bbox,
-            datetime=f"{s2_start.isoformat()}Z/{s2_end.isoformat()}Z",
+            datetime=f"{_utc_isoformat(s2_start)}/{_utc_isoformat(s2_end)}",
             query={"eo:cloud_cover": {"lt": 20}},
             max_items=20,
         )

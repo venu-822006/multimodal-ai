@@ -6,7 +6,6 @@
 [![Rasterio](https://img.shields.io/badge/Rasterio-1.3%2B-green.svg)](https://rasterio.readthedocs.io/)
 [![NetworkX](https://img.shields.io/badge/NetworkX-3.0%2B-orange.svg)](https://networkx.org/)
 [![Storage](https://img.shields.io/badge/Storage-~2.96%20GB%20Optimized-9cf.svg)](#4-repository--project-layout)
-[![Tests](https://img.shields.io/badge/Tests-14%2F14%20Passing-brightgreen.svg)](tests/)
 [![License](https://img.shields.io/badge/License-MIT-lightgrey.svg)](LICENSE)
 
 > **FloodSight AI is a research prototype for Sentinel-1 flood mapping, infrastructure exposure, route scenarios, and situation reports. It is not an operational flood-warning or response system.**
@@ -34,13 +33,11 @@
   - [7.2 Data Preparation (KuroSiwo Dataset)](#72-data-preparation-kurosiwo-dataset)
   - [7.3 Model Training with Event-Held-Out Splits](#73-model-training-with-event-held-out-splits)
   - [7.4 Validation-Only Threshold Calibration](#74-validation-only-threshold-calibration)
-  - [7.5 Asynchronous Worker Execution](#75-asynchronous-worker-execution)
+  - [7.5 Worker Execution with Prepared Scenes](#75-worker-execution-with-prepared-scenes)
   - [7.6 End-to-End Master Pipeline](#76-end-to-end-master-pipeline)
 - [8. Benchmark Results & Empirical Evaluation](#8-benchmark-results--empirical-evaluation)
-  - [8.1 Checkpoint Evolution: Legacy vs. Retrained Model](#81-checkpoint-evolution-legacy-vs-retrained-model)
-  - [8.2 Comprehensive Held-Out Evaluation (1,388 Scenes)](#82-comprehensive-held-out-evaluation-1388-scenes)
-  - [8.3 Unseen Himalayan Topography Benchmark (Event 1111005)](#83-unseen-himalayan-topography-benchmark-event-1111005)
-  - [8.4 Independent EMSR927 Copernicus Reference Verification](#84-independent-emsr927-copernicus-reference-verification)
+  - [8.1 Unseen Himalayan Topography Benchmark (Event 1111005)](#81-unseen-himalayan-topography-benchmark-event-1111005)
+  - [8.2 Independent EMSR927 Copernicus Reference Evaluation](#82-independent-emsr927-copernicus-reference-evaluation)
 - [9. Output Artifacts & `facts.json` Specification](#9-output-artifacts--factsjson-specification)
 - [10. Testing & Quality Assurance](#10-testing--quality-assurance)
 - [11. Data Integrity, Attributions & Ethical Disclaimers](#11-data-integrity-attributions--ethical-disclaimers)
@@ -279,7 +276,7 @@ aimodel/
 │   └── TESTING_STRATEGY.md      # Testing matrix & regression criteria
 │
 ├── outputs/                     # Generated job deliverables & evaluation runs
-│   ├── held_out_eval/           # Complete 1,388-scene holdout evaluation results
+│   ├── held_out_eval/           # Legacy report; not the clean final-test result
 │   │   ├── evaluation_report.json
 │   │   └── summary_facts.json
 │   ├── himalayan_eval/          # Prior 30-scene validation-overlap report
@@ -436,13 +433,13 @@ stateDiagram-v2
 | `QUEUED` | Job Registration | Allocates unique `job_id`, initializes workspace and logs. |
 | `VALIDATING` | Parameter Verification | Checks coordinate bounds ($-180 \le \lambda \le 180$, $-90 \le \phi \le 90$, $\text{west} < \text{east}$). |
 | `SEARCHING_DATA` | STAC Catalog Search | Discovers relative-orbit matching Sentinel-1 pre/post acquisitions. |
-| `DOWNLOADING` | Input Verification | Verifies caller-supplied two-band VV/VH dB GeoTIFFs exist. |
-| `PREPROCESSING` | Radiometric Validation | Ensures EPSG:4326 CRS, identical spatial grids, and physical dB dynamic range. |
+| `DOWNLOADING` | Input Stage | Uses caller-supplied scenes; product download is not implemented. |
+| `PREPROCESSING` | Input Validation | Checks EPSG:4326, matching grids, AOI coverage, plausible dB values, and compares date/orbit tags when present. |
 | `FLOOD_MAPPING` | Deep Learning Inference | Executes `FloodUNet`, temperature scaling, temporal filtering, and speckle removal. |
 | `DAMAGE_ANALYSIS` | OSM Exposure Assessment | Intersects flood footprint with pre-event buildings, roads, and bridges. |
-| `CONNECTIVITY_ANALYSIS` | Road Network Routing | Evaluates 3-state settlement access (`CONNECTED`, `CUT_OFF`, `UNKNOWN`) via NetworkX. |
+| `CONNECTIVITY_ANALYSIS` | Road Network Scenario | Evaluates `CONNECTED`, modelled `CUT_OFF`, and `UNKNOWN`; the road exclusion assumption is recorded in facts. |
 | `GENERATING_REPORT` | Briefing & Map Assembly | Generates `situation_report.html` and interactive `dashboard.html`. |
-| `COMPLETED` | Execution Success | Writes validated `facts.json` containing all metrics. |
+| `COMPLETED` | Pipeline Finished | Writes `facts.json` and map/report artifacts; this state does not mean the model is operationally validated. |
 | `FAILED` | Graceful Error Handling | Records error diagnostics into `status.json` without silent crashes. |
 
 ---
@@ -490,9 +487,9 @@ Train `FloodUNet` from scratch with event-held-out validation to prevent spatial
 
 ```powershell
 python train.py --data-dir data/processed --output-dir checkpoints `
-    --val-events 1111005 --test-events 1111003 `
-    --epochs 100 --patience 15 --batch-size 4 --patch-size 224 `
-    --flood-weight 8.0
+    --val-events 1111006 --test-events 1111005 `
+    --epochs 30 --patience 8 --batch-size 4 --patch-size 224 `
+    --flood-weight 8.0 --event-balanced-sampling
 ```
 
 * **Outputs:** Serialized weights (`checkpoints/best.pt`), validation manifest (`checkpoints/val_manifest.json`), and metrics log (`checkpoints/training_history.csv`).
@@ -533,9 +530,9 @@ The worker crops the supplied pair to the AOI, then creates predictions and down
 
 ---
 
-### 7.6 End-to-End Master Pipeline
+### 7.6 Model Training and Evaluation Pipeline
 
-Execute the master workflow (validation, training, held-out inference, debris detection, and metric aggregation):
+Run the model-development workflow (dataset check, training, validation inference, optional debris heuristics, and metric aggregation). This is separate from the prepared-scene AOI worker and does not acquire new satellite products:
 
 ```powershell
 python run_pipeline.py --epochs 50 --patience 10 --batch-size 4
@@ -545,49 +542,7 @@ python run_pipeline.py --epochs 50 --patience 10 --batch-size 4
 
 ## 8. Benchmark Results & Empirical Evaluation
 
-### 8.1 Checkpoint Evolution: Legacy vs. Retrained Model
-
-During initial development, an extreme class weight ($w_{\text{flood}} = 49.5$) and a Windows DataLoader worker normalization bug led to severe false alarms (mean IoU 4.61%, F1 5.59%). After retraining with synchronized per-worker statistics and balanced loss weighting ($w_{\text{flood}} = 8.0$), model performance improved dramatically across all metrics:
-
-| Metric | Legacy Unbalanced Checkpoint | Retrained Balanced Checkpoint (`best.pt`) | Relative Improvement |
-|:---|:---:|:---:|:---:|
-| **Macro Flood IoU (1,388 scenes)** | 4.61% | **56.49%** | **+12.2x** |
-| **Macro F1-Score** | 5.59% | **57.52%** | **+10.3x** |
-| **Pixel Accuracy (69.6M pixels)** | 35.21% | **91.79%** | **+56.58% pts** |
-| **Pixel Specificity** | 33.68% | **91.72%** | **+58.04% pts** |
-| **Pixel-Weighted Flood Recall** | 99.67% (over-saturated) | **93.91%** | Balanced |
-| **Zero-Flood Clean Scenes** | 0.0% (0 / 1,202) | **58.65% (705 / 1,202)** | **705 scenes completely clean** |
-| **Mean False Positive Pixels / Scene** | 12,245 px | **3,928 px** | **-67.9% false alarms** |
-
----
-
-### 8.2 Comprehensive Held-Out Evaluation (1,388 Scenes)
-
-Evaluated across 1,388 event-held-out scenes (events `1111005` and `1111003`) containing **69,644,288 valid test pixels** (`outputs/held_out_eval/evaluation_report.json`):
-
-#### Overall Held-Out Performance
-* **Macro-Averaged Flood IoU:** **56.49%**
-* **Macro-Averaged F1-Score:** **57.52%**
-* **Macro Precision:** **57.80%**
-* **Macro Recall:** **59.42%**
-* **Pixel Accuracy:** **91.79%**
-* **Pixel Specificity:** **91.72%**
-
-#### Segmented Inundated vs. Dry Terrain Breakdown
-
-```
-+---------------------------------------------------------------------------------------+
-| HELD-OUT SCENE SUBSET      | COUNT | MEAN IoU | MEAN F1 | PRECISION | RECALL | STATUS |
-+----------------------------+-------+----------+---------+-----------+--------+--------+
-| Positive Flood Scenes      |   186 |   42.51% |  50.17% |    52.30% | 64.35% | Robust |
-| Zero-Flood Scenes (Clean)  |  1202 |   58.65% (705 tiles 100% clean)       | Slashed FP |
-| Overall Macro Average      |  1388 |   56.49% |  57.52% |    57.80% | 59.42% | Valid  |
-+---------------------------------------------------------------------------------------+
-```
-
----
-
-### 8.3 Unseen Himalayan Topography Benchmark (Event 1111005)
+### 8.1 Unseen Himalayan Topography Benchmark (Event 1111005)
 
 The leakage-resistant test withholds all of Event 1111005 from training and
 threshold selection. The checkpoint selected on Event 1111006 was evaluated on
@@ -606,7 +561,7 @@ manifest and must not be treated as an untouched final test. See
 
 ---
 
-### 8.4 Independent EMSR927 Copernicus Reference Verification
+### 8.2 Independent EMSR927 Copernicus Reference Evaluation
 
 FloodSight AI provides an automated benchmark against independent emergency activations (e.g. Copernicus Emergency Management Service EMSR927):
 
@@ -644,7 +599,7 @@ Every execution writes a self-contained deliverable bundle to `--out-dir`:
   "crs": "EPSG:4326",
   "pixel_resolution_approx_m": 10.0,
   "checkpoint": "best.pt",
-  "val_flood_iou": 0.2468,
+  "val_flood_iou": 0.3894,
   "anti_hallucination_metrics": {
     "confidence_threshold_used": 0.49,
     "min_cluster_px_used": 15,
@@ -652,12 +607,13 @@ Every execution writes a self-contained deliverable bundle to `--out-dir`:
     "slope_hallucinations_filtered": 2100,
     "temporal_false_positives_filtered": 1800,
     "speckle_noise_pixels_filtered": 1540,
-    "verified_flood_pixels": 4520
+    "retained_flood_candidate_pixels": 4520
   },
   "debris_detection": {
     "debris_pixel_count": 320,
     "debris_area_km2": 0.032,
-    "debris_confidence": 0.65
+    "debris_heuristic_score": 0.65,
+    "status": "experimental_surface_change_candidates"
   },
   "buildings_affected": 142,
   "road_length_affected_km": 18.4,
@@ -675,11 +631,14 @@ Every execution writes a self-contained deliverable bundle to `--out-dir`:
       "pre_distance_km": 14.2
     }
   ],
+  "road_disruption_assumption": "Road candidate overlap plus 30 m is treated as impassable; closure not confirmed.",
   "downstream_analysis": {
+    "status": "SUCCESS",
+    "interpretation": "Terrain-only D8 screen, not a flood forecast.",
     "propagation_length_km": 12.8,
     "elevation_drop_m": 420.0,
-    "hydraulic_gradient_m_per_km": 32.81,
-    "downstream_communities_at_risk": 2
+    "terrain_gradient_m_per_km": 32.81,
+    "downstream_communities_near_screening_path": 2
   },
   "wording_standard": "Reported counts represent structures/roads affected or potentially affected by mapped inundation."
 }
@@ -689,7 +648,7 @@ Every execution writes a self-contained deliverable bundle to `--out-dir`:
 
 ## 10. Testing & Quality Assurance
 
-FloodSight AI includes an automated regression test suite covering model shapes, filter logic, debris detection, routing, and compliance rules:
+FloodSight AI includes a regression test suite covering model shapes, filter logic, debris detection, routing, and compliance rules. It was not run for the current update; run it before release:
 
 ```powershell
 python -m pytest -v
@@ -708,11 +667,11 @@ python -m pytest -v
 | `test_ai_model.py` | `test_baseline_otsu_thresholding` | Log-ratio baseline Otsu bimodal segmentation convergence. |
 | `test_ai_model.py` | `test_optical_ndwi_water_extraction` | McFeeters NDWI computation and cloud screening. |
 | `test_ai_model.py` | `test_connectivity_graph_routing` | NetworkX Dijkstra routing and 3-state cut-off classification. |
-| `test_ai_model.py` | `test_dem_downstream_flow_path_tracing` | D8 steepest-descent hydraulic vector propagation. |
+| `test_ai_model.py` | `test_dem_downstream_flow_path_tracing` | D8 terrain-only path tracing. |
 | `test_ai_model.py` | `test_generate_situation_report_html` | Validation of printable HTML structure and metric bindings. |
 | `test_data_rules.py` | `test_no_emsr927_leakage_in_worker_and_training` | Zero references to EMSR927 in core training/worker source files. |
 | `test_data_rules.py` | `test_damage_wording_compliance` | Strict enforcement of *"affected / potentially affected"* phrasing. |
-| `test_data_rules.py` | `test_mandatory_attributions_present` | Verifies presence of ESA, Copernicus, OSM, and KuroSiwo citations. |
+| `test_data_rules.py` | `test_mandatory_attributions_present` | Legacy source-string check; report generation now emits only attributions recorded for the data actually used. |
 
 ---
 

@@ -4,7 +4,7 @@ debris.py  —  FloodSight AI | Debris Candidate Detection Module (Class B)
 Implements Gap 1: Debris / surface change detection as required by the
 FloodSight problem statement:
 
-  - Class A (Inundation / Core): Open water flood mapped by U-Net / Baseline.
+  - Class A (Inundation / Core): Flood candidate mapped by U-Net / Baseline.
   - Class B (Debris / Experimental): Surface change in valley corridors
     not explained by open water:
       * Backscatter increase (radar roughness increase from gravel/mud/debris deposits).
@@ -13,10 +13,10 @@ FloodSight problem statement:
   - Honest Labelling:
       * Output values:
           0   = Background
-          1   = Class A (Inundation / Core, validated)
+          1   = Class A (predicted flood candidate; requires review)
           2   = Class B (Possible debris / surface change, experimental)
           255 = Nodata
-      * Confidence score associated with Class B.
+      * Uncalibrated heuristic score; it is not a probability or validated confidence.
 
 Usage:
     python debris.py \
@@ -70,7 +70,7 @@ def detect_debris_candidates(
     Detect Class B debris / surface change candidates.
 
     Returns:
-        (debris_binary_mask, estimated_confidence)
+        (debris_binary_mask, uncalibrated_heuristic_score)
     """
     # Exclude open water (Class A) and nodata
     valid = (flood_mask != 255) & (flood_mask != 1) & np.isfinite(post_vv) & np.isfinite(pre_vv)
@@ -101,18 +101,20 @@ def detect_debris_candidates(
         candidate = candidate & slope_valid
 
     # 4. Clean morphological noise
-    cleaned = remove_small_objects(candidate, max_size=min_cluster_px)
-    cleaned = remove_small_holes(cleaned, max_size=min_cluster_px)
+    if min_cluster_px > 0:
+        cleaned = remove_small_objects(candidate, min_size=min_cluster_px)
+        cleaned = remove_small_holes(cleaned, area_threshold=min_cluster_px)
+    else:
+        cleaned = candidate
 
-    # Confidence score: proportional to mean backscatter change and texture signal
+    # Heuristic score: proportional to mean backscatter change; not calibrated.
     if cleaned.sum() > 0:
         mean_sig = float(np.mean(combined_increase[cleaned]))
-        # Moderate confidence for experimental class (0.50 - 0.75)
-        confidence = round(min(0.75, max(0.40, 0.40 + (mean_sig / 10.0))), 2)
+        heuristic_score = round(min(0.75, max(0.40, 0.40 + (mean_sig / 10.0))), 2)
     else:
-        confidence = 0.0
+        heuristic_score = 0.0
 
-    return cleaned.astype(np.uint8), confidence
+    return cleaned.astype(np.uint8), heuristic_score
 
 
 def generate_multiclass_map(
@@ -174,7 +176,7 @@ def run_debris_module(
         with rasterio.open(slope_path) as src_s:
             slope = src_s.read(1).astype(np.float32)
 
-    debris_mask, confidence = detect_debris_candidates(
+    debris_mask, heuristic_score = detect_debris_candidates(
         pre_vv, post_vv, pre_vh, post_vh, flood_mask, slope=slope
     )
 
@@ -198,7 +200,8 @@ def run_debris_module(
             class_0="Background",
             class_1="Class_A_Core_Flood",
             class_2="Class_B_Possible_Debris_Experimental",
-            debris_confidence=str(confidence),
+            debris_heuristic_score=str(heuristic_score),
+            score_calibration="uncalibrated; not a probability",
         )
 
     flood_px = (multi_mask == 1).sum()
@@ -207,13 +210,13 @@ def run_debris_module(
 
     print(f"  [OK] Multi-class map saved -> {out_mask_path}")
     print(f"       Class A (Inundation): {flood_px:,} px")
-    print(f"       Class B (Debris):     {debris_px:,} px (confidence: {confidence})")
+    print(f"       Class B candidates:   {debris_px:,} px (uncalibrated heuristic score: {heuristic_score})")
 
     return {
         "flood_pixel_count": int(flood_px),
         "debris_pixel_count": int(debris_px),
         "total_valid_pixels": int(valid_px),
-        "debris_confidence": float(confidence),
+        "debris_heuristic_score": float(heuristic_score),
         "classes": {
             "0": "Background",
             "1": "Class A: Flood/Inundation (core)",

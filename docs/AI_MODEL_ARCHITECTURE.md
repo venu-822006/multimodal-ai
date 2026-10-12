@@ -114,7 +114,8 @@ The separate debris module uses heuristic thresholds: surface changes with
 increased backscatter ($\Delta\text{dB} \ge +2.0\text{ dB}$) may be flagged as
 **Possible Debris / Surface Change**. This is not a learned class and has not
 been independently validated.
-* Labeled with an explicit lower confidence score ($0.40 - 0.75$).
+* Stores a bounded heuristic score derived from mean backscatter change. This
+  score is uncalibrated and must not be read as a probability or confidence.
 * Combined with Class A to produce a multi-class GeoTIFF raster:
   - `0` = Background
   - `1` = Class A: Inundation (Core)
@@ -123,14 +124,16 @@ been independently validated.
 
 ## 7. Current evaluation status
 
-The model was retrained from scratch with explicit per-worker SAR normalization
-and balanced composite loss (`flood_weight = 8.0`).
+The clean candidate was trained from scratch with explicit per-worker SAR
+normalization and balanced composite loss (`flood_weight = 8.0`). It uses a
+whole-event split: training Events 1111002/1111003/1111004, validation Event
+1111006, and untouched test Event 1111005.
 
-### Training & Validation Progression (checkpoints/training_history.csv):
-* **Best Validation Flood IoU:** **22.91%** (Epoch 6)
-* **Validation Pixel Accuracy:** **90.24%**
-* **Validation Specificity:** **90.15%** (false positives reduced by >90% compared to earlier unweighted runs)
-* **Validation F1-Score:** **0.3728**
+### Checkpoint and validation (checkpoints/hackathon_holdout_1111005):
+* **Best validation flood IoU:** **38.94%** (Epoch 2, training-history metric).
+* **Validation F1 / precision / recall:** **56.05% / 45.07% / 74.13%**.
+* **Validation pixel accuracy:** **95.00%**; this remains background-sensitive.
+* **Selected probability threshold:** **0.49**, chosen on Event 1111006 only.
 
 ### Clean Event-Held-Out Benchmark (Event 1111005):
 * Trained on Events 1111002/1111003/1111004, selected checkpoint on 1111006,

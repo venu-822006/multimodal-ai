@@ -227,7 +227,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   </div>
   <div class="stat-row">
     <span><strong>Debris / Surface Change Candidate (Class B - Experimental):</strong></span>
-    <span>{{DEBRIS_AREA_KM2}} km² (heuristic score, not calibrated: {{DEBRIS_CONFIDENCE}})</span>
+    <span>{{DEBRIS_AREA_KM2}} km² (uncalibrated heuristic score: {{DEBRIS_SCORE}})</span>
   </div>
   <div class="stat-row">
     <span><strong>Terrain-only D8 downslope screen (not a flood forecast):</strong></span>
@@ -315,7 +315,7 @@ def render_report(facts_path: Path, out_html_path: Path, out_pdf_path: Path = No
     ckpt = data.get("checkpoint", "best.pt")
 
     debris_area = data.get("debris_area_km2")
-    debris_conf = data.get("debris_confidence", "not available")
+    debris_score = data.get("debris_heuristic_score", "not available")
 
     bldgs = data.get("buildings_affected")
     roads_km = data.get("road_length_affected_km")
@@ -392,7 +392,7 @@ def render_report(facts_path: Path, out_html_path: Path, out_pdf_path: Path = No
         "{{RESOLUTION}}": str(res) if res is not None else "not available",
         "{{UNCERTAINTY_SUMMARY}}": uncertainty_summary,
         "{{DEBRIS_AREA_KM2}}": f"{debris_area:.2f}" if isinstance(debris_area, (int, float)) else "not available",
-        "{{DEBRIS_CONFIDENCE}}": str(debris_conf),
+        "{{DEBRIS_SCORE}}": str(debris_score),
         "{{DEM_FLOW_INFO}}": dem_flow_text,
         "{{BUILDINGS_AFFECTED}}": str(bldgs) if bldgs is not None else "not available",
         "{{ROAD_KM_AFFECTED}}": f"{roads_km:.2f}" if isinstance(roads_km, (int, float)) else "not available",
