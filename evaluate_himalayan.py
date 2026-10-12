@@ -33,7 +33,7 @@ def evaluate_unseen_himalayan_scenes(
     manifest_path: Path,
     checkpoint_path: Path,
     out_dir: Path = Path("outputs/himalayan_eval"),
-    max_scenes: int = 50,
+    max_scenes: int = 0,
 ) -> dict:
     """Run end-to-end inference and evaluation strictly on held-out Himalayan events."""
     if not manifest_path.exists():

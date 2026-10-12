@@ -106,8 +106,9 @@ def compute_log_ratio_flood(
 
     # Morphological cleaning to remove radar speckle
     cleaned = median_filter(raw_flood.astype(np.uint8), size=3).astype(bool)
-    cleaned = remove_small_objects(cleaned, max_size=min_size_px)
-    cleaned = remove_small_holes(cleaned, max_size=min_size_px)
+    if min_size_px > 0:
+        cleaned = remove_small_objects(cleaned, min_size=min_size_px)
+        cleaned = remove_small_holes(cleaned, area_threshold=min_size_px)
 
     flood_mask = np.zeros_like(raw_flood, dtype=np.uint8)
     flood_mask[~valid_mask] = 255  # Nodata
