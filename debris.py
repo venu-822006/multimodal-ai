@@ -91,7 +91,7 @@ def detect_debris_candidates(
     candidate = (
         (combined_increase >= min_backscatter_increase_db)
         & (post_vh > -22.0)  # Debris is radar bright, not deep dark water
-        & (roughness_increase > 0.0)
+        & ((roughness_increase > 0.0) | (pre_var == 0.0))
         & valid
     )
 
