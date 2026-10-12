@@ -84,5 +84,7 @@ def test_mandatory_attributions_present():
 
     assert "Contains modified Copernicus Sentinel data" in content
     assert "Copernicus WorldDEM-30" in content
+    assert "© DLR e.V." in content
+    assert "Airbus Defence and Space GmbH" in content
     assert "OpenStreetMap contributors" in content
     assert "Kuro Siwo" in content

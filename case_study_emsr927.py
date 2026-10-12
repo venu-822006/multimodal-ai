@@ -105,30 +105,6 @@ def compare_masks(pred_mask: np.ndarray, ref_mask: np.ndarray, transform, crs) -
     }
 
 
-def generate_emsr927_reference(pred_src: rasterio.io.DatasetReader, out_path: Path) -> Path:
-    """Generate georeferenced EMSR927 reference delineation for August 2026 Trishuli flood."""
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    h, w = pred_src.height, pred_src.width
-    ref_mask = np.zeros((h, w), dtype=np.uint8)
-
-    y_coords, x_coords = np.mgrid[0:h, 0:w]
-    river_path = (y_coords - 0.7 * x_coords - 30).astype(np.float32)
-    # Core mapped flood extent per EMSR927
-    flood_corridor = (np.abs(river_path) < 14)
-    ref_mask[flood_corridor] = 1
-
-    profile = pred_src.profile.copy()
-    profile.update(count=1, dtype="uint8", nodata=255)
-    with rasterio.open(out_path, "w", **profile) as dst:
-        dst.write(ref_mask, 1)
-        dst.update_tags(
-            source="Copernicus Emergency Management Service EMSR927",
-            event="August 2026 Trishuli Flood, Nepal",
-            evaluation_only="true",
-        )
-    return out_path
-
-
 def run_emsr927_benchmark(pred_path: Path, reference_path: Path | None, out_json: Path) -> dict:
     with rasterio.open(pred_path) as pred_src:
         if pred_src.count != 1 or pred_src.crs is None:
@@ -138,10 +114,15 @@ def run_emsr927_benchmark(pred_path: Path, reference_path: Path | None, out_json
             raise ValueError("Prediction values must be 0=non-flood, 1=flood, 255=nodata.")
 
         if reference_path is None or not reference_path.exists():
-            ref_file = Path("data/evaluation_only/emsr927_reference.tif")
-            if not ref_file.exists():
-                generate_emsr927_reference(pred_src, ref_file)
-            reference_path = ref_file
+            ref_default = Path("data/evaluation_only/emsr927_reference.tif")
+            if ref_default.exists():
+                reference_path = ref_default
+            else:
+                raise FileNotFoundError(
+                    "Official EMSR927 reference mask GeoTIFF not found. "
+                    "Provide a valid reference mask via --reference. "
+                    "Synthetic / demo reference generation is prohibited per challenge guidelines."
+                )
 
         ref_mask = _aligned_reference(pred_src, reference_path)
         result = compare_masks(pred_mask, ref_mask, pred_src.transform, pred_src.crs)

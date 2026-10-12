@@ -157,6 +157,8 @@ def main():
         "--manifest", str(val_manifest),
         "--checkpoint", str(best_ckpt),
         "--out-dir", str(pred_dir),
+        "--confidence-threshold", "0.92",
+        "--min-cluster-px", "15",
     ]
     run_cmd(predict_cmd, "Held-Out Scene Inference")
 

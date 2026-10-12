@@ -254,8 +254,26 @@ def run_dem_flow_analysis(
         with rasterio.open(dem_path) as dem_src:
             dem = dem_src.read(1).astype(np.float32)
     else:
-        bbox = [bounds.left, bounds.bottom, bounds.right, bounds.top]
-        dem, transform, crs = generate_synthetic_copernicus_dem(bbox, shape=flood_mask.shape)
+        # Check standard data/terrain directory
+        default_dem = Path("data/terrain/copernicus_worlddem30.tif")
+        if default_dem.exists():
+            with rasterio.open(default_dem) as dem_src:
+                dem = dem_src.read(1).astype(np.float32)
+        else:
+            print("  [DEM Note] No Copernicus WorldDEM-30 raster provided. Skipping downstream flow path tracing.")
+            return {
+                "status": "SKIPPED",
+                "reason": "No Copernicus WorldDEM-30 elevation raster provided for this area.",
+                "downstream_length_km": 0.0,
+                "elevation_start_m": None,
+                "elevation_end_m": None,
+                "elevation_drop_m": 0.0,
+                "hydraulic_gradient_m_per_km": 0.0,
+                "flow_path_steps": 0,
+                "flow_path_coords": [],
+                "geojson_path": None,
+                "downstream_communities_at_risk": [],
+            }
 
     flow_results = trace_downstream_flood_path(flood_mask, dem, transform)
 

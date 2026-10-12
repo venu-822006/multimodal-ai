@@ -83,8 +83,10 @@ def render_dashboard(facts_path: Path, flood_mask_path: Path, out_path: Path, os
     )
     attribution = (
         "Contains modified Copernicus Sentinel data 2026. "
-        "Copernicus WorldDEM-30 30m elevation model. "
-        f"© OpenStreetMap contributors (pre-event snapshot: {facts.get('osm_snapshot_date', 'not recorded')}). "
+        "Produced using Copernicus WorldDEM-30 © DLR e.V. 2010–2014 and © Airbus Defence and Space GmbH 2014–2018 "
+        "provided under COPERNICUS by the European Union and ESA; all rights reserved. "
+        f"© OpenStreetMap contributors (pre-event snapshot: {facts.get('osm_snapshot_date', 'not recorded')}, ODbL). "
+        "Training dataset citation: Bountos et al., 2024 (KuroSiwo). "
         "Educational prototype; verify every layer before operational use."
     )
     template = r'''<!doctype html>

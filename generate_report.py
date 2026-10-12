@@ -269,7 +269,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
 <div class="footer">
   <strong>Data Sources & Attributions:</strong><br>
-  Contains modified Copernicus Sentinel data 2026. | © OpenStreetMap contributors (pre-event snapshot: {{OSM_SNAPSHOT_DATE}}). | Training dataset citation: Bountos et al., 2024 for Kuro Siwo. | Elevation model: Copernicus WorldDEM-30.
+  Contains modified Copernicus Sentinel data 2026. | © OpenStreetMap contributors (pre-event snapshot: {{OSM_SNAPSHOT_DATE}}, ODbL).<br>
+  Produced using Copernicus WorldDEM-30 © DLR e.V. 2010–2014 and © Airbus Defence and Space GmbH 2014–2018 provided under COPERNICUS by the European Union and ESA; all rights reserved.<br>
+  Training dataset citation: Bountos et al., 2024 (KuroSiwo / Kuro Siwo: A Multimodal SAR Dataset for Flood Inundation Mapping, NeurIPS 2024).
 </div>
 
 </body>

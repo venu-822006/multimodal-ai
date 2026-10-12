@@ -11,7 +11,7 @@ from pathlib import Path
 import numpy as np
 import torch
 from torch import nn
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, WeightedRandomSampler
 from tqdm import tqdm
 
 from dataset import KuroSiwoDataset, estimate_sar_stats, get_train_transforms, get_val_transforms, set_sar_stats
@@ -87,7 +87,11 @@ def discover_pairs(data_dir: Path) -> list[tuple[Path, Path]]:
     return pairs
 
 
-def split_by_event(pairs: list[tuple[Path, Path]], val_fraction: float, seed: int):
+def split_by_event(
+    pairs: list[tuple[Path, Path]], val_fraction: float, seed: int,
+    val_event_ids: list[str] | None = None,
+    test_event_ids: list[str] | None = None,
+):
     """Partition scenes by REAL disaster event ID to prevent spatial data leakage.
 
     All tiles belonging to a given event are placed exclusively into either
@@ -104,28 +108,44 @@ def split_by_event(pairs: list[tuple[Path, Path]], val_fraction: float, seed: in
             f"At least two distinct flood events are needed for an event-held-out split; found {len(keys)}: {keys}"
         )
 
-    rng = random.Random(seed)
-    rng.shuffle(keys)
+    test_keys = list(test_event_ids or [])
+    if len(test_keys) != len(set(test_keys)):
+        raise ValueError("Test event IDs must be unique.")
+    unknown_test = set(test_keys) - set(keys)
+    if unknown_test:
+        raise ValueError(f"Unknown test event IDs: {sorted(unknown_test)}")
 
-    total_tiles = len(pairs)
-    target_val_tiles = int(total_tiles * val_fraction)
-
-    # Greedily allocate full events to validation until target fraction is met
-    val_keys: list[str] = []
-    current_val_tiles = 0
-    for k in keys:
-        if current_val_tiles + len(groups[k]) <= target_val_tiles or not val_keys:
-            val_keys.append(k)
-            current_val_tiles += len(groups[k])
-            if current_val_tiles >= target_val_tiles:
-                break
-
-    # Guard: never put all events in validation
-    if len(val_keys) == len(keys):
-        val_keys.pop()
+    remaining_keys = [key for key in keys if key not in set(test_keys)]
+    if val_event_ids is not None:
+        val_keys = list(val_event_ids)
+        if len(val_keys) != len(set(val_keys)):
+            raise ValueError("Validation event IDs must be unique.")
+        unknown_val = set(val_keys) - set(remaining_keys)
+        if unknown_val:
+            raise ValueError(
+                f"Validation events must exist and must not overlap the test set: {sorted(unknown_val)}"
+            )
+        if not val_keys or len(val_keys) >= len(remaining_keys):
+            raise ValueError("Explicit split must leave at least one train event and one validation event.")
+    else:
+        rng = random.Random(seed)
+        shuffled_keys = remaining_keys.copy()
+        rng.shuffle(shuffled_keys)
+        total_tiles = sum(len(groups[k]) for k in remaining_keys)
+        target_val_tiles = int(total_tiles * val_fraction)
+        val_keys = []
+        current_val_tiles = 0
+        for k in shuffled_keys:
+            if current_val_tiles + len(groups[k]) <= target_val_tiles or not val_keys:
+                val_keys.append(k)
+                current_val_tiles += len(groups[k])
+                if current_val_tiles >= target_val_tiles:
+                    break
+        if len(val_keys) == len(remaining_keys):
+            val_keys.pop()
 
     val_keys_set = set(val_keys)
-    train_keys = [k for k in keys if k not in val_keys_set]
+    train_keys = [k for k in remaining_keys if k not in val_keys_set]
 
     train_pairs = [pair for k in train_keys for pair in groups[k]]
     val_pairs   = [pair for k in val_keys for pair in groups[k]]
@@ -133,14 +153,19 @@ def split_by_event(pairs: list[tuple[Path, Path]], val_fraction: float, seed: in
     print("\n  [Split by Real Flood Event]")
     print(f"    Train Events ({len(train_keys)}): {train_keys} -> {len(train_pairs):,} tiles")
     print(f"    Val Events   ({len(val_keys)}): {val_keys} -> {len(val_pairs):,} tiles "
-          f"({len(val_pairs)/total_tiles*100:.1f}% held-out)\n")
+          f"({len(val_pairs)/len(pairs)*100:.1f}% of all tiles)\n")
 
-    return train_pairs, val_pairs, train_keys, val_keys
+    test_pairs = [pair for k in test_keys for pair in groups[k]]
+    if test_keys:
+        print(f"    Test Events  ({len(test_keys)}): {test_keys} -> {len(test_pairs):,} tiles (never used for selection)\n")
+
+    return train_pairs, val_pairs, test_pairs, train_keys, val_keys, test_keys
 
 
 def make_loader(
     pairs, patch_size, batch_size, training, workers, device,
     samples_per_image: int = 1, sar_mean=None, sar_std=None,
+    event_balanced_sampling: bool = False,
 ):
     images = [str(pair[0]) for pair in pairs]
     masks = [str(pair[1]) for pair in pairs]
@@ -156,10 +181,23 @@ def make_loader(
         sar_mean=sar_mean,
         sar_std=sar_std,
     )
+    sampler = None
+    if training and event_balanced_sampling:
+        event_counts = {}
+        for image_path in images:
+            event = _event_id(Path(image_path))
+            event_counts[event] = event_counts.get(event, 0) + 1
+        # Square-root inverse-frequency is a tempered balance: it reduces
+        # dominance by huge events without repeatedly replaying tiny events.
+        tile_weights = [1.0 / np.sqrt(event_counts[_event_id(Path(path))]) for path in images]
+        sample_weights = torch.as_tensor(tile_weights * samples_per_image, dtype=torch.double)
+        sampler = WeightedRandomSampler(sample_weights, num_samples=len(dataset), replacement=True)
+        print(f"  Event-balanced sampler enabled across {len(event_counts)} training events.")
     return DataLoader(
         dataset,
         batch_size=batch_size,
-        shuffle=training,
+        shuffle=training and sampler is None,
+        sampler=sampler,
         num_workers=workers,
         pin_memory=device.type == "cuda",
         persistent_workers=workers > 0,
@@ -327,13 +365,21 @@ def parse_args():
              "Optimizer, scheduler state, and epoch counter are all restored.",
     )
     parser.add_argument(
-        "--flood-weight", type=float, default=49.5,
+        "--flood-weight", type=float, default=8.0,
         help="Class weight for the flood pixel class (bg=1.0). "
-             "Default 49.5 matches ~2%% flood pixel ratio in KuroSiwo Batch 0.",
+             "Default 8.0 balances minority-class learning with false-positive control.",
     )
+    parser.add_argument("--val-events", nargs="+", default=None,
+                        help="Explicit validation event IDs; use with --test-events for a clean test split")
+    parser.add_argument("--test-events", nargs="+", default=None,
+                        help="Explicit final test event IDs excluded from training and model selection")
     parser.add_argument(
         "--samples-per-image", type=int, default=1,
         help="Number of patches sampled per tile per epoch (default 1 matches native 224x224 KuroSiwo tiles)",
+    )
+    parser.add_argument(
+        "--event-balanced-sampling", action="store_true",
+        help="Sample training events uniformly to reduce domination by large events.",
     )
     return parser.parse_args()
 
@@ -356,7 +402,11 @@ def train():
     print(f"Device: {device}")
 
     pairs = discover_pairs(args.data_dir)
-    train_pairs, val_pairs, train_events, val_events = split_by_event(pairs, args.val_fraction, args.seed)
+    if bool(args.val_events) != bool(args.test_events):
+        raise ValueError("--val-events and --test-events must be provided together for an explicit clean split.")
+    train_pairs, val_pairs, test_pairs, train_events, val_events, test_events = split_by_event(
+        pairs, args.val_fraction, args.seed, args.val_events, args.test_events
+    )
     dataset_fingerprint = _dataset_fingerprint(pairs, args.data_dir)
     print(f"Paired scenes: {len(pairs)}; train: {len(train_pairs)}; validation: {len(val_pairs)}")
 
@@ -382,6 +432,25 @@ def train():
     with open(manifest_path, "w", encoding="utf-8") as f:
         json.dump(val_manifest, f, indent=2)
     print(f"  [OK] Saved held-out validation manifest -> {manifest_path}")
+    if test_pairs:
+        test_manifest = {
+            "test_event_ids": test_events,
+            "test_scene_count": len(test_pairs),
+            "test_pairs": [
+                {
+                    "image": str(pair[0].resolve()),
+                    "mask": str(pair[1].resolve()),
+                    "image_name": pair[0].name,
+                    "mask_name": pair[1].name,
+                    "event_id": _event_id(pair[0]),
+                }
+                for pair in test_pairs
+            ],
+        }
+        test_manifest_path = args.output_dir / "test_manifest.json"
+        with open(test_manifest_path, "w", encoding="utf-8") as f:
+            json.dump(test_manifest, f, indent=2)
+        print(f"  [OK] Saved untouched test manifest -> {test_manifest_path}")
 
     sar_mean, sar_std = estimate_sar_stats([str(pair[0]) for pair in train_pairs])
     set_sar_stats(sar_mean, sar_std)
@@ -390,13 +459,14 @@ def train():
     train_loader = make_loader(
         train_pairs, args.patch_size, args.batch_size, True, args.workers, device,
         args.samples_per_image, sar_mean, sar_std,
+        args.event_balanced_sampling,
     )
     val_loader = make_loader(
         val_pairs, args.patch_size, args.batch_size, False, args.workers, device,
         1, sar_mean, sar_std,
     )
 
-    model = create_unet_model(in_channels=2, classes=2, base_channels=24).to(device)
+    model = create_unet_model(in_channels=int(sar_mean.size), classes=2, base_channels=24).to(device)
 
     # ── Combo Loss: Weighted CE + Focal + Dice ─────────────────────────────
     class_weights = torch.tensor([1.0, args.flood_weight], device=device)
@@ -426,6 +496,7 @@ def train():
             )
         saved_train = ckpt.get("train_events")
         saved_val = ckpt.get("val_events")
+        saved_test = ckpt.get("test_events", [])
         if not saved_train or not saved_val:
             raise ValueError(
                 "Resume checkpoint lacks event split metadata (train_events/val_events) "
@@ -436,6 +507,8 @@ def train():
                 "Resume checkpoint was trained with a different event split. "
                 "Use the original --seed/--val-fraction and dataset, or start a new run."
             )
+        if sorted(saved_test) != sorted(test_events):
+            raise ValueError("Resume checkpoint uses a different test-event split. Start a fresh run.")
         if ckpt.get("dataset_fingerprint") and ckpt["dataset_fingerprint"] != dataset_fingerprint:
             raise ValueError("Resume checkpoint dataset files changed; refusing a mixed-data training run.")
         saved_config = ckpt.get("training_config", {})
@@ -445,6 +518,7 @@ def train():
             ("batch_size", args.batch_size),
             ("val_fraction", args.val_fraction),
             ("samples_per_image", args.samples_per_image),
+            ("event_balanced_sampling", args.event_balanced_sampling),
         ):
             if key in saved_config and saved_config[key] != current_value:
                 raise ValueError(
@@ -521,15 +595,31 @@ def train():
             archive = history_path.with_name(
                 f"training_history_legacy_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.csv"
             )
-            history_path.replace(archive)
-            print(f"Archived incompatible training log as {archive.name}; starting a clean log.")
+            try:
+                history_path.replace(archive)
+                print(f"Archived incompatible training log as {archive.name}; starting a clean log.")
+            except OSError:
+                import shutil
+                try:
+                    shutil.copy2(history_path, archive)
+                    print(f"Archived incompatible training log as {archive.name} (via copy); starting a clean log.")
+                except OSError as err:
+                    print(f"Notice: could not archive existing training history ({err}).")
             append_history = False
     elif history_path.exists():
         archive = history_path.with_name(
             f"training_history_previous_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.csv"
         )
-        history_path.replace(archive)
-        print(f"Preserved prior training log as {archive.name}.")
+        try:
+            history_path.replace(archive)
+            print(f"Preserved prior training log as {archive.name}.")
+        except OSError:
+            import shutil
+            try:
+                shutil.copy2(history_path, archive)
+                print(f"Preserved prior training log as {archive.name} (via copy).")
+            except OSError as err:
+                print(f"Notice: could not archive existing training history ({err}). Overwriting log.")
     file_mode = "a" if append_history else "w"
 
     with history_path.open(file_mode, newline="", encoding="utf-8") as history_file:
@@ -588,7 +678,7 @@ def train():
                 "optimizer_state_dict": optimizer.state_dict(),
                 "scheduler_state_dict": scheduler.state_dict(),
                 "scaler_state_dict":    scaler.state_dict(),
-                "model_config":         {"in_channels": 2, "classes": 2, "base_channels": 24},
+                "model_config":         {"in_channels": int(sar_mean.size), "classes": 2, "base_channels": 24},
                 "input_normalization_version": 2,
                 "normalization":        {"mean_db": sar_mean.tolist(), "std_db": sar_std.tolist()},
                 "patch_size":           args.patch_size,
@@ -600,6 +690,7 @@ def train():
                     "val_fraction": args.val_fraction,
                     "patience": args.patience,
                     "samples_per_image": args.samples_per_image,
+                    "event_balanced_sampling": args.event_balanced_sampling,
                 },
                 "dataset_fingerprint":  dataset_fingerprint,
                 "val_flood_iou":        val_metrics["flood_iou"],
@@ -607,6 +698,7 @@ def train():
                 "epochs_without_improvement": epochs_without_improvement,
                 "train_events":         train_events,
                 "val_events":           val_events,
+                "test_events":          test_events,
                 "rng_state": {
                     "python": random.getstate(),
                     "numpy": np.random.get_state(),

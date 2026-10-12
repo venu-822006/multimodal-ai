@@ -78,3 +78,6 @@ desktop.ini
 *.tmp
 job.log
 outputs/test_*/
+outputs/ready_*/
+outputs/uncertainty_smoke/
+checkpoints/ready_run/

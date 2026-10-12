@@ -44,8 +44,10 @@ Usage:
 """
 
 import argparse
+import hashlib
 import json
 import math
+import os
 import sys
 from pathlib import Path
 
@@ -57,7 +59,6 @@ if hasattr(sys.stderr, "reconfigure"):
 import numpy as np
 import rasterio
 from rasterio.transform import Affine
-from rasterio.crs import CRS
 from rasterio.transform import array_bounds
 from rasterio.warp import transform as warp_transform, transform_bounds
 import torch
@@ -81,9 +82,30 @@ DEFAULT_RES_M = 10.0   # Sentinel-1 GRD IW: ~10 m ground spacing
 # ---------------------------------------------------------------------------
 def load_checkpoint(ckpt_path: Path, device: torch.device):
     """Load model + normalization stats from a FloodSight checkpoint."""
-    ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
+    # Permit only NumPy's inert dtype/array reconstruction primitives used by
+    # existing training RNG metadata; arbitrary globals remain rejected.
+    numpy_core = getattr(np, "_core", None)
+    multiarray = numpy_core.multiarray if numpy_core is not None else np.core.multiarray
+    safe_numpy = [multiarray._reconstruct, np.ndarray, np.dtype]
+    for dtype_name in ("UInt32DType", "Float32DType", "Int64DType", "Float64DType"):
+        dtype_type = getattr(getattr(np, "dtypes", None), dtype_name, None)
+        if dtype_type is not None:
+            safe_numpy.append(dtype_type)
+    with torch.serialization.safe_globals(safe_numpy):
+        ckpt = torch.load(ckpt_path, map_location=device, weights_only=True)
+    digest = hashlib.sha256()
+    with open(ckpt_path, "rb") as checkpoint_file:
+        for chunk in iter(lambda: checkpoint_file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    ckpt["checkpoint_sha256"] = digest.hexdigest()
+    required = {"model_state_dict"}
+    missing = required.difference(ckpt)
+    if missing:
+        raise ValueError(f"Invalid checkpoint {ckpt_path}: missing {', '.join(sorted(missing))}")
 
     cfg   = ckpt.get("model_config", {"in_channels": 2, "classes": 2, "base_channels": 24})
+    if int(cfg.get("classes", 2)) != 2:
+        raise ValueError(f"Flood segmentation checkpoint must have exactly 2 classes, got {cfg.get('classes')}")
     model = create_unet_model(**cfg).to(device)
     model.load_state_dict(ckpt["model_state_dict"])
     model.eval()
@@ -91,8 +113,15 @@ def load_checkpoint(ckpt_path: Path, device: torch.device):
     norm    = ckpt.get("normalization", {})
     sar_mean = np.array(norm.get("mean_db", [-12.5, -18.0]), dtype=np.float32)
     sar_std  = np.array(norm.get("std_db",  [4.5,   4.0]),   dtype=np.float32)
+    channels = int(cfg.get("in_channels", 2))
+    if channels not in (2, 4) or sar_mean.shape != (channels,) or sar_std.shape != (channels,):
+        raise ValueError(f"Invalid checkpoint channel/normalization contract: channels={channels}, mean={sar_mean.shape}, std={sar_std.shape}")
+    if not np.all(np.isfinite(sar_mean)) or not np.all(np.isfinite(sar_std)) or np.any(sar_std <= 0):
+        raise ValueError("Checkpoint normalization must contain finite means and positive standard deviations.")
 
     patch_size = ckpt.get("patch_size", 256)
+    if not isinstance(patch_size, int) or patch_size <= 0:
+        raise ValueError(f"Checkpoint patch_size must be a positive integer, got {patch_size!r}")
 
     print(f"  [OK] Loaded checkpoint: {ckpt_path.name}")
     val_iou = ckpt.get("val_flood_iou")
@@ -103,12 +132,14 @@ def load_checkpoint(ckpt_path: Path, device: torch.device):
 
 
 def normalize_scene(image: np.ndarray, mean: np.ndarray, std: np.ndarray) -> np.ndarray:
-    """Z-score normalise a (H, W, 2) float32 SAR image.
+    """Z-score normalise a (H, W, C) float32 SAR image.
 
     Clips at +/-3 sigma before normalising to suppress extreme radar outliers
     (urban corner reflectors, water specular returns) that would skew the
     distribution and cause the model to hallucinate flood in bright targets.
     """
+    if image.shape[-1] != len(mean) or mean.shape != std.shape:
+        raise ValueError(f"Input has {image.shape[-1]} bands but checkpoint normalization has {len(mean)}")
     low  = mean - 3 * std
     high = mean + 3 * std
     image = np.clip(image, low, high)
@@ -116,34 +147,34 @@ def normalize_scene(image: np.ndarray, mean: np.ndarray, std: np.ndarray) -> np.
 
 
 def load_scene(scene_path: Path):
-    """Load a 2-band (VV, VH) processed GeoTIFF.
+    """Load a 2-band or 4-band processed SAR GeoTIFF.
 
     Extracts and returns:
-      - (H, W, 2) float32 array
+      - (H, W, C) float32 array where C is 2 or 4
       - Affine geotransform
       - CRS
       - raw nodata value
       - (H, W) boolean valid_mask (True where pixels are valid, False where nodata/NaN)
     """
     with rasterio.open(scene_path) as src:
-        if src.count < 2:
-            raise ValueError(f"Expected 2 bands (VV, VH) in {scene_path}, got {src.count}")
-        data      = src.read(out_dtype="float32", masked=True)   # (2, H, W)
+        if src.count not in (2, 4):
+            raise ValueError(f"Expected 2 or 4 SAR bands in {scene_path}, got {src.count}")
+        data      = src.read(out_dtype="float32", masked=True)
         transform = src.transform
         crs       = src.crs
         nodata    = src.nodata
 
     # Preserve input raster validity mask
     if hasattr(data, "mask") and np.any(data.mask):
-        valid_mask = ~(data.mask[0] | data.mask[1])
+        valid_mask = ~np.any(data.mask, axis=0)
     else:
         valid_mask = np.ones((data.shape[1], data.shape[2]), dtype=bool)
 
     # Ensure infinite / NaN values are also masked
-    valid_mask = valid_mask & np.isfinite(data[0]) & np.isfinite(data[1])
+    valid_mask = valid_mask & np.all(np.isfinite(data), axis=0)
 
     # Fill nodata with neutral dB values for neural network forward pass
-    neutral = np.array([-25.0, -31.0], dtype=np.float32)
+    neutral = np.array([-25.0, -31.0] * (data.shape[0] // 2), dtype=np.float32)
     if hasattr(data, "filled"):
         data = data.filled(neutral[:, None, None])
     else:
@@ -275,27 +306,28 @@ def apply_anti_hallucination_filters(
 # ---------------------------------------------------------------------------
 # Geodesic / Metric Pixel Area Calculation
 # ---------------------------------------------------------------------------
-def compute_pixel_area_m2(transform: Affine, crs, center_lat: float = 0.0) -> float:
-    """Calculate exact ground area per pixel in m^2.
+def compute_pixel_area_m2(transform: Affine, crs, center_lat: float = 0.0) -> float | None:
+    """Estimate ground area per pixel in m^2 when CRS units are known.
 
-    For geographic CRS (EPSG:4326 / degrees):
-      Uses ellipsoid geodesic scaling at the scene's centroid latitude:
-        dy = |transform.e| * 111,139.0 m (meridional distance per degree)
-        dx = |transform.a| * 111,320.0 * cos(radians(center_lat)) m (parallel distance)
-        area = dx * dy
+    For geographic CRS (degrees), uses a local latitude-aware approximation.
     For projected CRS (e.g. UTM):
-      Units are already metres: area = |transform.a * transform.e|
+      Converts projected CRS units to square metres and handles rotated grids.
     """
-    if transform is None:
-        return 100.0   # Default 10 m x 10 m
-    dx = abs(transform.a)
-    dy = abs(transform.e)
-
-    if crs is not None and crs.is_geographic:
-        dy_m = dy * 111_139.0
-        dx_m = dx * 111_320.0 * math.cos(math.radians(center_lat))
-        return max(float(dx_m * dy_m), 1.0)
-    return max(float(dx * dy), 1.0)
+    if transform is None or crs is None:
+        return None
+    # Determinant handles rotated/sheared grids. CRS axis factors convert
+    # projected coordinate units (including feet) to metres.
+    coordinate_area = abs(float(transform.a * transform.e - transform.b * transform.d))
+    if crs.is_geographic:
+        # Local ellipsoidal approximation, adequate for one small SAR pixel.
+        # Determinant preserves rotated pixels; no CRS means no metric claim.
+        lat_scale = 111_132.0
+        lon_scale = 111_320.0 * math.cos(math.radians(center_lat))
+        return coordinate_area * lat_scale * lon_scale
+    unit_factor = getattr(crs, "linear_units_factor", None)
+    if not unit_factor or unit_factor[1] is None:
+        return None
+    return coordinate_area * float(unit_factor[1]) ** 2
 
 
 # ---------------------------------------------------------------------------
@@ -320,22 +352,27 @@ def compute_facts(
     east  = west  + W * transform.a
     south = north + H * transform.e
     center_lat = (north + south) / 2.0 if (crs and crs.is_geographic) else 0.0
-
     pixel_area_m2 = compute_pixel_area_m2(transform, crs, center_lat)
-    flood_area_km2 = (flood_px * pixel_area_m2) / 1_000_000.0
+    flood_area_km2 = (flood_px * pixel_area_m2) / 1_000_000.0 if pixel_area_m2 is not None else None
 
     return {
-        "flood_area_km2":             round(flood_area_km2, 6),
+        "flood_area_km2":             round(flood_area_km2, 6) if flood_area_km2 is not None else None,
         "flood_pixel_count":          flood_px,
         "total_valid_pixels":         valid_px,
         "flood_fraction":             round(flood_px / max(valid_px, 1), 6),
         "bbox":                       [round(west, 6), round(south, 6), round(east, 6), round(north, 6)],
         "crs":                        str(crs) if crs else "unknown",
-        "pixel_area_m2":              round(pixel_area_m2, 2),
-        "pixel_resolution_approx_m":  round(math.sqrt(pixel_area_m2), 2),
+        "bbox_crs":                   str(crs) if crs else None,
+        "pixel_area_m2":              round(pixel_area_m2, 2) if pixel_area_m2 is not None else None,
+        "pixel_resolution_approx_m":  round(math.sqrt(pixel_area_m2), 2) if pixel_area_m2 is not None else None,
+        "spatial_measurement_available": pixel_area_m2 is not None,
         "model_config":               ckpt.get("model_config", {}),
         "normalization":              ckpt.get("normalization", {}),
         "checkpoint":                 ckpt_path.name,
+        "checkpoint_sha256":          ckpt.get("checkpoint_sha256"),
+        "decision_status":            "RESEARCH_ONLY_NOT_OPERATIONALLY_VALIDATED",
+        "requires_human_review":      True,
+        "decision_use":               "informational mapping only; verify against independent geospatial evidence",
         "val_flood_iou":              ckpt.get("val_flood_iou", None),
         "epoch":                      ckpt.get("epoch", None),
     }
@@ -356,30 +393,54 @@ def predict_one(
     ckpt_path:   Path,
     ckpt:        dict,
     temperature: float = 1.0,
-    confidence_threshold: float = 0.5,
+    confidence_threshold: float = 0.92,
     min_cluster_px: int = 0,
     pre_scene_path: Path | None = None,
+    save_probability: bool = False,
 ) -> dict:
     print(f"\n  [>] Scene: {scene_path.name}")
 
     # -- Load & normalize --
     image, transform, crs, nodata, valid_mask = load_scene(scene_path)
-    H, W, _ = image.shape
-    post_image = image
+    H, W, input_channels = image.shape
+    post_image = image[:, :, -2:]
     print(f"    Size: {H}x{W} pixels  |  Valid pixels: {int(valid_mask.sum()):,}/{valid_mask.size:,}")
     pre_image = None
     if pre_scene_path is not None:
         pre_image, pre_transform, pre_crs, _, _ = load_scene(pre_scene_path)
-        if pre_image.shape != image.shape or pre_crs != crs or pre_transform != transform:
-            raise ValueError("Pre/post images must share CRS, dimensions, and pixel alignment for temporal filtering.")
+        if (pre_image.shape[:2] != image.shape[:2] or pre_crs != crs
+                or pre_transform != transform or pre_image.shape[2] != 2 or input_channels != 2):
+            raise ValueError("Separate pre/post images must each have two bands and share CRS, dimensions, and pixel alignment.")
+
+    model_channels = int(ckpt.get("model_config", {}).get("in_channels", len(sar_mean)))
+    if input_channels == 4:
+        if pre_scene_path is not None:
+            raise ValueError("Do not pass --pre-scene with a four-band input; it already contains pre- and post-event bands.")
+        pre_image = image[:, :, :2]
+        post_image = image[:, :, 2:]
+        model_image = image if model_channels == 4 else post_image
+    elif input_channels == 2:
+        if model_channels == 4:
+            if pre_image is None:
+                raise ValueError(
+                    "This checkpoint requires pre- and post-event SAR (4 channels); provide --pre-scene "
+                    "or a four-band input raster."
+                )
+            model_image = np.concatenate((pre_image, image), axis=2)
+        elif model_channels == 2:
+            model_image = image
+        else:
+            raise ValueError(f"Unsupported model input channel count: {model_channels}")
+    else:
+        raise ValueError(f"Unsupported input channel count: {input_channels}")
 
     # Pad scene if smaller than patch_size
     pad_h = max(0, patch_size - H)
     pad_w = max(0, patch_size - W)
     if pad_h or pad_w:
-        image = np.pad(image, ((0, pad_h), (0, pad_w), (0, 0)), mode="edge")
+        model_image = np.pad(model_image, ((0, pad_h), (0, pad_w), (0, 0)), mode="edge")
 
-    norm_image = normalize_scene(image, sar_mean, sar_std)
+    norm_image = normalize_scene(model_image, sar_mean, sar_std)
 
     # -- Inference --
     raw_pred, prob_map = predict_scene(model, norm_image, patch_size, stride, device, temperature)
@@ -415,26 +476,85 @@ def predict_one(
         height=H, width=W,
         count=1,
         dtype=np.uint8,
-        crs=crs if crs else CRS.from_epsg(4326),
+        crs=crs,
         transform=transform,
         nodata=NODATA_OUT,
         compress="lzw",
     ) as dst:
         dst.write(pred_mask, 1)
-        dst.update_tags(values="0=background,1=flood,255=nodata", source="FloodSight_AI")
+        dst.update_tags(values="0=background,1=flood,255=nodata", source="FloodSight_AI",
+                        decision_status="RESEARCH_ONLY_NOT_OPERATIONALLY_VALIDATED",
+                        requires_human_review="true",
+                        confidence_threshold=str(confidence_threshold))
     print(f"    [OK] Predicted mask -> {out_tif}")
+
+    # Normalized predictive entropy is an uncertainty *proxy* for the model's
+    # two-class probabilities. It is not calibrated confidence and does not
+    # capture all sources of uncertainty (for example, out-of-region shift).
+    safe_prob = np.clip(prob_map.astype(np.float32), 1e-7, 1.0)
+    uncertainty = -np.sum(safe_prob * np.log(safe_prob), axis=0) / np.log(2.0)
+    uncertainty = np.clip(uncertainty, 0.0, 1.0).astype(np.float32)
+    uncertainty[~valid_mask] = -1.0
+    uncertainty_path = out_dir / f"{scene_path.stem}_uncertainty.tif"
+    with rasterio.open(
+        uncertainty_path, "w",
+        driver="GTiff",
+        height=H, width=W,
+        count=1,
+        dtype=np.float32,
+        crs=crs,
+        transform=transform,
+        nodata=-1.0,
+        compress="lzw",
+    ) as dst:
+        dst.write(uncertainty, 1)
+        dst.update_tags(
+            values="0=low predictive entropy,1=high predictive entropy,-1=nodata",
+            source="normalized_binary_predictive_entropy",
+            calibration="not calibrated; does not measure distribution-shift uncertainty",
+            decision_status="RESEARCH_ONLY_NOT_OPERATIONALLY_VALIDATED",
+            requires_human_review="true",
+        )
+    uncertainty_values = uncertainty[valid_mask]
+    facts_uncertainty = {
+        "raster": str(uncertainty_path),
+        "method": "normalized binary predictive entropy",
+        "calibrated": False,
+        "mean": float(np.mean(uncertainty_values)) if uncertainty_values.size else None,
+        "fraction_at_least_0_5": float(np.mean(uncertainty_values >= 0.5)) if uncertainty_values.size else None,
+        "interpretation": "High values indicate model ambiguity; low values do not guarantee correctness, especially under geographic or sensor shift.",
+    }
+
+    if save_probability:
+        probability_path = out_dir / f"{scene_path.stem}_flood_probability.tif"
+        flood_probability = prob_map[1].astype(np.float32)
+        flood_probability[~valid_mask] = -1.0
+        with rasterio.open(
+            probability_path, "w",
+            driver="GTiff",
+            height=H, width=W,
+            count=1,
+            dtype=np.float32,
+            crs=crs,
+            transform=transform,
+            nodata=-1.0,
+            compress="lzw",
+        ) as dst:
+            dst.write(flood_probability, 1)
+            dst.update_tags(values="0..1=flood_probability,-1=nodata", source="FloodSight_AI",
+                            decision_status="RESEARCH_ONLY_NOT_OPERATIONALLY_VALIDATED",
+                            confidence_threshold=str(confidence_threshold))
 
     # -- Compute and write facts.json --
     facts = compute_facts(pred_mask, transform, crs, ckpt_path, ckpt)
     facts["anti_hallucination_metrics"] = h_stats
+    facts["uncertainty"] = facts_uncertainty
     facts_path = out_dir / f"{scene_path.stem}_facts.json"
     with open(facts_path, "w", encoding="utf-8") as f:
         json.dump(facts, f, indent=2)
     print(f"    [OK] facts.json -> {facts_path}")
-    print(
-        f"    Flood area: {facts['flood_area_km2']:.4f} km2  "
-        f"({facts['flood_fraction'] * 100:.2f}% of valid pixels)"
-    )
+    area_text = f"{facts['flood_area_km2']:.4f} km2" if facts['flood_area_km2'] is not None else "unknown area (CRS unavailable)"
+    print(f"    Flood area: {area_text}  ({facts['flood_fraction'] * 100:.2f}% of valid pixels)")
 
     return facts
 
@@ -445,9 +565,13 @@ def predict_one(
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--scene",       type=Path, help="Single scene GeoTIFF to predict on")
+    p.add_argument("--pre-scene",   type=Path,
+                   help="Pre-event 2-band VV/VH GeoTIFF paired with --scene for a 4-channel checkpoint")
     p.add_argument("--scene-dir",   type=Path, help="Directory of scene GeoTIFFs (batch predict)")
     p.add_argument("--manifest",    type=Path, help="JSON manifest of scenes to predict on (e.g. val_manifest.json)")
-    p.add_argument("--checkpoint",  type=Path, default=Path("checkpoints/best.pt"))
+    default_checkpoint = "checkpoints/official_run/best.pt" if Path("checkpoints/official_run/best.pt").exists() else "checkpoints/best.pt"
+    p.add_argument("--checkpoint", type=Path,
+                   default=Path(os.environ.get("FLOODSIGHT_CHECKPOINT", default_checkpoint)))
     p.add_argument("--out-dir",     type=Path, default=Path("outputs"))
     p.add_argument("--patch-size",  type=int,  default=None,
                    help="Override patch size (default: from checkpoint)")
@@ -455,10 +579,13 @@ def parse_args():
                    help="Sliding window stride (default: patch_size // 2)")
     p.add_argument("--temperature", type=float, default=1.0,
                    help="Logit temperature (1.0 leaves model probabilities unchanged; calibration must be validated).")
-    p.add_argument("--confidence-threshold", type=float, default=0.5,
-                   help="Flood probability cutoff; default 0.5 matches binary argmax.")
+    p.add_argument("--confidence-threshold", type=float,
+                   default=float(os.environ.get("FLOODSIGHT_THRESHOLD", "0.92")),
+                   help="Flood probability cutoff; default 0.92 is the validation F1-selected operating point.")
     p.add_argument("--min-cluster-px", type=int, default=0,
                    help="Remove flood components smaller than this size; 0 disables morphology filtering.")
+    p.add_argument("--save-probability", action="store_true",
+                   help="Write a float probability raster to support validation-only threshold calibration.")
     p.add_argument("--device",      type=str,  default="auto", choices=["auto", "cuda", "cpu"])
     return p.parse_args()
 
@@ -491,6 +618,10 @@ def main():
     stride = args.stride if args.stride else patch_size // 2
 
     # -- Collect scenes --
+    if args.pre_scene and not args.scene and not args.manifest:
+        raise ValueError("--pre-scene requires --scene, or put pre_image paths in the manifest.")
+    if args.pre_scene and args.manifest:
+        raise ValueError("Use pre_image fields in the manifest instead of --pre-scene with --manifest.")
     if args.scene:
         scenes = [args.scene]
     elif args.manifest:
@@ -498,7 +629,8 @@ def main():
             raise FileNotFoundError(f"Manifest file not found: {args.manifest}")
         with open(args.manifest, "r", encoding="utf-8") as f:
             m_data = json.load(f)
-        scenes = [Path(p["image"]) for p in m_data.get("val_pairs", [])]
+        manifest_pairs = m_data.get("val_pairs") or m_data.get("test_pairs", [])
+        scenes = [Path(p["image"]) for p in manifest_pairs]
         print(f"Loaded {len(scenes)} held-out scenes from manifest {args.manifest.name}")
     elif args.scene_dir:
         scenes = sorted(args.scene_dir.glob("*.tif"))
@@ -513,6 +645,13 @@ def main():
 
     all_facts = []
     for scene_path in scenes:
+        pre_scene_path = args.pre_scene
+        if args.manifest:
+            pre_by_image = {
+                Path(item["image"]).resolve(): Path(item["pre_image"])
+                for item in manifest_pairs if item.get("pre_image")
+            }
+            pre_scene_path = pre_by_image.get(scene_path.resolve())
         facts = predict_one(
             scene_path, model, sar_mean, sar_std,
             patch_size, stride, device,
@@ -520,6 +659,8 @@ def main():
             temperature=args.temperature,
             confidence_threshold=args.confidence_threshold,
             min_cluster_px=args.min_cluster_px,
+            pre_scene_path=pre_scene_path,
+            save_probability=args.save_probability,
         )
         all_facts.append(facts)
 
@@ -527,9 +668,12 @@ def main():
         summary_path = args.out_dir / "summary_facts.json"
         with open(summary_path, "w", encoding="utf-8") as f:
             json.dump(all_facts, f, indent=2)
-        total_flood = sum(f["flood_area_km2"] for f in all_facts)
+        known_areas = [f["flood_area_km2"] for f in all_facts if f["flood_area_km2"] is not None]
         print(f"\n  [OK] Summary -> {summary_path}")
-        print(f"  Total estimated flood area: {total_flood:.4f} km2")
+        if len(known_areas) == len(all_facts):
+            print(f"  Total estimated flood area: {sum(known_areas):.4f} km2")
+        else:
+            print(f"  Total estimated flood area unavailable for {len(all_facts) - len(known_areas)} scene(s) without a metric CRS.")
 
     print("\nDone.")
 

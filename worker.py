@@ -23,6 +23,7 @@ import argparse
 import hashlib
 import json
 import math
+import os
 import sys
 import time
 from datetime import date, datetime, timedelta
@@ -69,6 +70,7 @@ class JobContext:
         post_image: Path = None,
         s2_green: Path = None,
         s2_nir: Path = None,
+        dem_file: Path = None,
     ):
         self.job_id = job_id
         self.bbox = bbox  # [west, south, east, north]
@@ -78,6 +80,7 @@ class JobContext:
         self.post_image = post_image
         self.s2_green = s2_green
         self.s2_nir = s2_nir
+        self.dem_file = dem_file
         self.state = JobState.QUEUED
         self.error_message = None
         self.history = []
@@ -169,62 +172,18 @@ def acquire_scene_pair(ctx: JobContext, cache_dir: Path) -> tuple[Path, Path]:
     post_path = cache_dir / f"{ctx.job_id}_post.tif"
     if pre_path.exists() and post_path.exists():
         return pre_path, post_path
+    if post_path.exists():
+        return None, post_path
 
-    # Synthesize analysis-ready georeferenced Sentinel-1 dual-pol scene pair covering requested bbox
-    west, south, east, north = ctx.bbox
-    h, w = 256, 256
-    transform = from_bounds(west, south, east, north, w, h)
-    crs = CRS.from_epsg(4326)
-
-    # Base background backscatter (mountain terrain in dB matched to Kuro Siwo distribution)
-    rng = np.random.default_rng(42)
-    base_vv = rng.normal(-7.5, 1.8, (h, w)).astype(np.float32)
-    base_vh = rng.normal(-14.0, 2.0, (h, w)).astype(np.float32)
-
-    # Pre-flood river channel (thin dark line following valley corridor)
-    y_coords, x_coords = np.mgrid[0:h, 0:w]
-    river_path = (y_coords - 0.7 * x_coords - 30).astype(np.float32)
-    river_pre = (np.abs(river_path) < 4)
-    base_vv[river_pre] = -21.5  # open water specular drop
-    base_vh[river_pre] = -26.5
-
-    profile = {
-        "driver": "GTiff",
-        "height": h,
-        "width": w,
-        "count": 2,
-        "dtype": "float32",
-        "crs": crs,
-        "transform": transform,
-        "compress": "lzw",
-    }
-    with rasterio.open(pre_path, "w", **profile) as dst:
-        dst.write(base_vv, 1)
-        dst.write(base_vh, 2)
-        dst.update_tags(platform="Sentinel-1A", mode="IW", acquisition=f"{ctx.flood_date}_pre")
-
-    # Post-flood: Inundated river corridor (water causes backscatter drop: -22.5 dB VV, -27.5 dB VH)
-    post_vv = base_vv.copy()
-    post_vh = base_vh.copy()
-    river_flood = (np.abs(river_path) < 22)
-    post_vv[river_flood] = -22.5
-    post_vh[river_flood] = -27.5
-
-    # Debris / sediment deposit along outer banks (+4.5 dB VV, +3.5 dB VH increase)
-    debris_zone = (np.abs(river_path) >= 22) & (np.abs(river_path) < 32)
-    post_vv[debris_zone] += 4.5
-    post_vh[debris_zone] += 3.5
-
-    with rasterio.open(post_path, "w", **profile) as dst:
-        dst.write(post_vv, 1)
-        dst.write(post_vh, 2)
-        dst.update_tags(platform="Sentinel-1A", mode="IW", acquisition=f"{ctx.flood_date}_post")
-
-    return pre_path, post_path
+    raise FileNotFoundError(
+        f"Real Sentinel-1 imagery not provided for target bounding box {ctx.bbox} and flood date {ctx.flood_date}. "
+        "Supply real Sentinel-1 dual-pol (VV/VH dB) GeoTIFFs via --post-image (and optional --pre-image). "
+        "Synthetic demo data generation has been disabled per challenge rules."
+    )
 
 
 def acquire_optical_pair(ctx: JobContext, cache_dir: Path) -> tuple[Path, Path] | None:
-    """Acquire caller-supplied or synthesized clear-sky Sentinel-2 L2A Green (B03) and NIR (B08) scenes."""
+    """Acquire caller-supplied clear-sky Sentinel-2 L2A Green (B03) and NIR (B08) scenes."""
     cache_dir.mkdir(parents=True, exist_ok=True)
     if ctx.s2_green and ctx.s2_nir:
         if not ctx.s2_green.is_file() or not ctx.s2_nir.is_file():
@@ -238,83 +197,7 @@ def acquire_optical_pair(ctx: JobContext, cache_dir: Path) -> tuple[Path, Path] 
     if green_path.exists() and nir_path.exists():
         return green_path, nir_path
 
-    west, south, east, north = ctx.bbox
-    h, w = 256, 256
-    transform = from_bounds(west, south, east, north, w, h)
-    crs = CRS.from_epsg(4326)
-
-    y_coords, x_coords = np.mgrid[0:h, 0:w]
-    river_path = (y_coords - 0.7 * x_coords - 30).astype(np.float32)
-
-    # Background vegetation: high NIR (~0.35), low Green (~0.08)
-    rng = np.random.default_rng(84)
-    green = rng.normal(0.08, 0.02, (h, w)).clip(0.02, 0.25).astype(np.float32)
-    nir = rng.normal(0.35, 0.04, (h, w)).clip(0.15, 0.60).astype(np.float32)
-
-    # Inundated river zone: water absorbs NIR, higher Green
-    river_flood = (np.abs(river_path) < 22)
-    green[river_flood] = 0.18
-    nir[river_flood] = 0.04
-
-    # Clouds (<3%)
-    clouds = (rng.uniform(0, 1, (h, w)) < 0.03)
-    green[clouds] = 0.45
-    nir[clouds] = 0.45
-
-    profile = {
-        "driver": "GTiff", "height": h, "width": w, "count": 1,
-        "dtype": "float32", "crs": crs, "transform": transform, "compress": "lzw"
-    }
-    with rasterio.open(green_path, "w", **profile) as dst:
-        dst.write(green, 1)
-        dst.update_tags(platform="Sentinel-2B", band="B03_GREEN", acquisition=f"{ctx.flood_date}T05:00:00Z")
-
-    with rasterio.open(nir_path, "w", **profile) as dst:
-        dst.write(nir, 1)
-        dst.update_tags(platform="Sentinel-2B", band="B08_NIR", acquisition=f"{ctx.flood_date}T05:00:00Z")
-
-    return green_path, nir_path
-
-
-def _generate_fallback_osm_features(bbox: list[float], filter_expr: str) -> dict:
-    west, south, east, north = bbox
-    cx = (west + east) / 2.0
-    cy = (south + north) / 2.0
-
-    if "place=* and type:node" in filter_expr:
-        features = [
-            {"type": "Feature", "geometry": {"type": "Point", "coordinates": [cx - 0.05, cy - 0.08]}, "properties": {"name": "Betrawati Riverside Village", "place": "village"}},
-            {"type": "Feature", "geometry": {"type": "Point", "coordinates": [cx - 0.02, cy - 0.01]}, "properties": {"name": "Ramche Settlement", "place": "hamlet"}},
-            {"type": "Feature", "geometry": {"type": "Point", "coordinates": [cx + 0.04, cy + 0.05]}, "properties": {"name": "Dhunche Town", "place": "town"}},
-            {"type": "Feature", "geometry": {"type": "Point", "coordinates": [cx + 0.08, cy + 0.11]}, "properties": {"name": "Syaphrubesi Corridor", "place": "village"}},
-        ]
-    elif "amenity=hospital" in filter_expr:
-        features = [
-            {"type": "Feature", "geometry": {"type": "Point", "coordinates": [cx - 0.06, cy - 0.10]}, "properties": {"name": "Trishuli District Hospital", "amenity": "hospital"}},
-            {"type": "Feature", "geometry": {"type": "Point", "coordinates": [cx + 0.03, cy + 0.04]}, "properties": {"name": "Dhunche Health Post", "amenity": "clinic"}},
-        ]
-    elif "highway=*" in filter_expr:
-        features = [
-            {"type": "Feature", "geometry": {"type": "LineString", "coordinates": [
-                [cx - 0.08, cy - 0.12], [cx - 0.05, cy - 0.08], [cx - 0.02, cy - 0.01],
-                [cx + 0.01, cy + 0.02], [cx + 0.04, cy + 0.05], [cx + 0.08, cy + 0.11]
-            ]}, "properties": {"name": "Pasang Lhamu Highway", "highway": "primary"}},
-            {"type": "Feature", "geometry": {"type": "LineString", "coordinates": [
-                [cx - 0.05, cy - 0.08], [cx - 0.07, cy - 0.05], [cx - 0.04, cy - 0.02]
-            ]}, "properties": {"name": "Betrawati Access Road", "highway": "secondary"}},
-        ]
-    elif "bridge=*" in filter_expr:
-        features = [
-            {"type": "Feature", "geometry": {"type": "LineString", "coordinates": [[cx - 0.02, cy - 0.01], [cx - 0.018, cy - 0.008]]}, "properties": {"name": "Trishuli River Bridge", "bridge": "yes"}},
-        ]
-    elif "building=*" in filter_expr:
-        features = [
-            {"type": "Feature", "geometry": {"type": "Polygon", "coordinates": [[[cx - 0.021, cy - 0.011], [cx - 0.019, cy - 0.011], [cx - 0.019, cy - 0.009], [cx - 0.021, cy - 0.009], [cx - 0.021, cy - 0.011]]]}, "properties": {"building": "yes"}},
-        ]
-    else:
-        features = []
-
-    return {"type": "FeatureCollection", "features": features}
+    return None
 
 
 def _fetch_ohsome_features(bbox: list[float], snapshot_date: str, filter_expr: str, cache_dir: Path) -> dict:
@@ -356,11 +239,8 @@ def _fetch_ohsome_features(bbox: list[float], snapshot_date: str, filter_expr: s
             json.dump(data, stream)
         return data
     except Exception as err:
-        print(f"  [OSM Note] ohsome query ({filter_expr[:28]}...) encountered: {err}. Using regional corridor features.")
-        fallback = _generate_fallback_osm_features(bbox, filter_expr)
-        with cache_path.open("w", encoding="utf-8") as stream:
-            json.dump(fallback, stream)
-        return fallback
+        print(f"  [OSM Note] ohsome query ({filter_expr[:28]}...) encountered: {err}. Synthetic feature generation disabled.")
+        return {"type": "FeatureCollection", "features": []}
 
 
 def acquire_osm_snapshot(ctx: JobContext, cache_dir: Path) -> dict[str, dict]:
@@ -424,15 +304,18 @@ def run_pipeline_worker(ctx: JobContext) -> bool:
         # ─────────────────────────────────────────────────────────────────────
         # 5. FLOOD_MAPPING
         # ─────────────────────────────────────────────────────────────────────
-        ctx.set_state(JobState.FLOOD_MAPPING, "Running log-ratio baseline and U-Net model with best.pt weights.")
+        ctx.set_state(JobState.FLOOD_MAPPING, "Running log-ratio baseline and U-Net flood model.")
         from predict import load_checkpoint, predict_one
         import torch
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        ckpt_path = Path("checkpoints/best.pt")
+        default_checkpoint = "checkpoints/official_run/best.pt" if Path("checkpoints/official_run/best.pt").exists() else "checkpoints/best.pt"
+        ckpt_path = Path(os.environ.get("FLOODSIGHT_CHECKPOINT", default_checkpoint))
         if not ckpt_path.exists():
-            ckpt_path = Path("checkpoints/latest.pt")
-        if not ckpt_path.exists():
-            raise FileNotFoundError("No trained checkpoint found in checkpoints/ (run train.py first).")
+            raise FileNotFoundError(f"Configured model checkpoint not found: {ckpt_path}. Train or configure FLOODSIGHT_CHECKPOINT.")
+
+        confidence_threshold = float(os.environ.get("FLOODSIGHT_THRESHOLD", "0.92"))
+        if not 0.0 <= confidence_threshold <= 1.0:
+            raise ValueError("FLOODSIGHT_THRESHOLD must be between 0 and 1.")
 
         model, mean, std, p_size, ckpt = load_checkpoint(ckpt_path, device)
         facts = predict_one(
@@ -447,6 +330,7 @@ def run_pipeline_worker(ctx: JobContext) -> bool:
             ckpt_path=ckpt_path,
             ckpt=ckpt,
             temperature=1.0,
+            confidence_threshold=confidence_threshold,
             pre_scene_path=pre_scene,
         )
 
@@ -459,9 +343,12 @@ def run_pipeline_worker(ctx: JobContext) -> bool:
         facts["debris_detection"] = debris_res
 
         # Pull debris fields to top level of facts for direct situation report rendering
-        pixel_area_m2 = facts.get("pixel_area_m2", 100.0)
+        pixel_area_m2 = facts.get("pixel_area_m2")
         debris_px = debris_res.get("debris_pixel_count", 0)
-        facts["debris_area_km2"] = round(float(debris_px * pixel_area_m2 / 1e6), 6)
+        facts["debris_area_km2"] = (
+            round(float(debris_px * pixel_area_m2 / 1e6), 6)
+            if pixel_area_m2 is not None else None
+        )
         facts["debris_confidence"] = debris_res.get("debris_confidence", 0.65)
 
         # Cross-Sensor Optical Verification (Sentinel-2 clear-sky NDWI)
@@ -505,7 +392,7 @@ def run_pipeline_worker(ctx: JobContext) -> bool:
 
         # Downstream flood-path analysis using Copernicus DEM (Bonus requirement)
         from dem_flow_analysis import run_dem_flow_analysis, analyze_downstream_exposure
-        dem_flow_res = run_dem_flow_analysis(flood_mask_path, out_dir=ctx.out_dir)
+        dem_flow_res = run_dem_flow_analysis(flood_mask_path, dem_path=ctx.dem_file, out_dir=ctx.out_dir)
         downstream_exposed = analyze_downstream_exposure(
             dem_flow_res.get("flow_path_coords", []),
             osm_data["settlements"].get("features", [])
@@ -554,6 +441,7 @@ def main():
     p.add_argument("--post-image", type=Path, default=None, help="Custom Sentinel-1 post-flood GeoTIFF")
     p.add_argument("--s2-green", type=Path, default=None, help="Custom Sentinel-2 Band 3 (Green) GeoTIFF")
     p.add_argument("--s2-nir", type=Path, default=None, help="Custom Sentinel-2 Band 8 (NIR) GeoTIFF")
+    p.add_argument("--dem", type=Path, default=None, help="Custom Copernicus WorldDEM-30 GeoTIFF")
     args = p.parse_args()
 
     print("=" * 65)
@@ -569,6 +457,7 @@ def main():
         post_image=args.post_image,
         s2_green=args.s2_green,
         s2_nir=args.s2_nir,
+        dem_file=args.dem,
     )
     success = run_pipeline_worker(ctx)
     sys.exit(0 if success else 1)

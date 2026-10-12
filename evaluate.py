@@ -81,11 +81,18 @@ def compute_metrics(pred: np.ndarray, truth: np.ndarray) -> dict:
     intersection = tp
     union = tp + fp + fn
 
-    iou = intersection / max(union, 1)
-    precision = tp / max(tp + fp, 1)
-    recall = tp / max(tp + fn, 1)
+    if union == 0:
+        # Both ground truth and prediction contain 0 flood pixels: perfect agreement on negative scene
+        iou = 1.0
+        precision = 1.0
+        recall = 1.0
+        f1 = 1.0
+    else:
+        iou = intersection / max(union, 1)
+        precision = tp / max(tp + fp, 1)
+        recall = tp / max(tp + fn, 1)
+        f1 = 2 * precision * recall / max(precision + recall, 1e-7)
     specificity = tn / max(tn + fp, 1)
-    f1 = 2 * precision * recall / max(precision + recall, 1e-7)
     accuracy = (tp + tn) / total_valid
 
     return {
@@ -106,7 +113,9 @@ def compute_metrics(pred: np.ndarray, truth: np.ndarray) -> dict:
 def evaluate_pair(pred_path: Path, truth_path: Path) -> dict:
     """Evaluate a single predicted mask against ground truth.
 
-    Fails with ValueError if dimensions, CRS, or affine geotransforms mismatch.
+    Fails with ValueError if dimensions, declared CRSs, or affine transforms mismatch.
+    Missing CRS metadata is permitted only when both rasters lack it and their
+    dimensions and affine transforms still match exactly.
     Silent cropping or resizing is strictly prohibited to guarantee data integrity.
     """
     with rasterio.open(pred_path) as src_p:
@@ -128,8 +137,14 @@ def evaluate_pair(pred_path: Path, truth_path: Path) -> dict:
             f"Silent cropping is prohibited to ensure evaluation integrity."
         )
 
-    if crs_p is None or crs_t is None:
-        raise ValueError(f"Both prediction and truth must have a CRS: {pred_path.name}, {truth_path.name}.")
+    if (crs_p is None) != (crs_t is None):
+        raise ValueError(
+            f"CRS is present on only one raster: {pred_path.name}, {truth_path.name}."
+        )
+    if crs_p is None and crs_t is None:
+        # Some training tiles carry a local affine transform without a declared
+        # CRS. They can still be compared when both rasters share that transform.
+        pass
     if crs_p != crs_t:
         raise ValueError(
             f"CRS mismatch: prediction {pred_path.name} is {crs_p}, "
@@ -181,6 +196,30 @@ def summarize_scenes(results: list[dict]) -> dict:
         f"mean_{key}": float(np.mean([row[key] for row in results]))
         for key in ("iou", "f1", "precision", "recall", "specificity", "balanced_accuracy", "accuracy", "prediction_coverage")
     }
+    # Separate breakdown: positive-flood scenes vs zero-flood scenes
+    pos_results = [r for r in results if (r["tp"] + r["fn"]) > 0]
+    zero_results = [r for r in results if (r["tp"] + r["fn"]) == 0]
+
+    pos_summary = {}
+    if pos_results:
+        pos_summary = {
+            "scene_count": len(pos_results),
+            "mean_iou": float(np.mean([r["iou"] for r in pos_results])),
+            "mean_f1": float(np.mean([r["f1"] for r in pos_results])),
+            "mean_precision": float(np.mean([r["precision"] for r in pos_results])),
+            "mean_recall": float(np.mean([r["recall"] for r in pos_results])),
+        }
+
+    zero_summary = {}
+    if zero_results:
+        clean_count = sum(1 for r in zero_results if r["fp"] == 0)
+        zero_summary = {
+            "scene_count": len(zero_results),
+            "clean_count": clean_count,
+            "clean_pct": round(100.0 * clean_count / len(zero_results), 2),
+            "mean_fp_pixels": float(np.mean([r["fp"] for r in zero_results])),
+        }
+
     tp = sum(row["tp"] for row in results)
     fp = sum(row["fp"] for row in results)
     fn = sum(row["fn"] for row in results)
@@ -191,6 +230,8 @@ def summarize_scenes(results: list[dict]) -> dict:
     specificity = tn / max(tn + fp, 1)
     return {
         **macro,
+        "positive_scenes_eval": pos_summary,
+        "zero_flood_scenes_eval": zero_summary,
         "pixel_weighted": {
             "iou": tp / max(tp + fp + fn, 1),
             "f1": 2 * precision * recall / max(precision + recall, 1e-12),
@@ -241,13 +282,14 @@ def main():
         with open(args.manifest, "r", encoding="utf-8") as f:
             manifest_data = json.load(f)
 
-        val_pairs = manifest_data.get("val_pairs", [])
-        if not val_pairs:
-            raise ValueError(f"No val_pairs found in manifest {args.manifest}")
+        held_out_pairs = manifest_data.get("val_pairs") or manifest_data.get("test_pairs", [])
+        held_out_events = manifest_data.get("val_event_ids") or manifest_data.get("test_event_ids", [])
+        if not held_out_pairs:
+            raise ValueError(f"No val_pairs or test_pairs found in manifest {args.manifest}")
 
         results = []
         missing = []
-        for item in val_pairs:
+        for item in held_out_pairs:
             img_stem = Path(item["image_name"]).stem
             pred_file = args.pred_dir / f"{img_stem}_flood_predicted.tif"
             truth_file = Path(item["mask"])
@@ -263,7 +305,7 @@ def main():
 
         if missing:
             raise RuntimeError(
-                f"Held-out evaluation is incomplete: {len(missing)} of {len(val_pairs)} "
+                f"Held-out evaluation is incomplete: {len(missing)} of {len(held_out_pairs)} "
                 f"predictions are missing (first: {', '.join(missing[:5])})."
             )
         if not results:
@@ -281,7 +323,7 @@ def main():
 
         print("=" * 65)
         print(f" Held-Out Manifest Evaluation ({len(results)} scenes)")
-        print(f" Held-out Events: {manifest_data.get('val_event_ids', 'N/A')}")
+        print(f" Held-out Events: {held_out_events or 'N/A'}")
         print("=" * 65)
         print(f"  Mean Flood IoU:         {mean_iou*100:.2f}%")
         print(f"  Mean F1-Score:          {mean_f1:.4f}")
@@ -297,7 +339,7 @@ def main():
                 "summary": {
                     **summary,
                     "scenes_evaluated": len(results),
-                    "held_out_events": manifest_data.get("val_event_ids", []),
+                    "held_out_events": held_out_events,
                 },
                 "per_scene": results,
             }, f, indent=2)
