@@ -307,27 +307,37 @@ def apply_anti_hallucination_filters(
 # Geodesic / Metric Pixel Area Calculation
 # ---------------------------------------------------------------------------
 def compute_pixel_area_m2(transform: Affine, crs, center_lat: float = 0.0) -> float | None:
-    """Estimate ground area per pixel in m^2 when CRS units are known.
+    """Estimate ground pixel area only when CRS and pixel scale are plausible.
 
-    For geographic CRS (degrees), uses a local latitude-aware approximation.
-    For projected CRS (e.g. UTM):
-      Converts projected CRS units to square metres and handles rotated grids.
+    Geographic degree coordinates are converted locally. Both geographic and
+    projected grids with implausibly coarse pixels (>250 m on either axis) are
+    rejected; this catches benchmark tiles that carry a placeholder 0..1
+    transform plus EPSG:4326 metadata rather than real georeferencing.
     """
     if transform is None or crs is None:
         return None
-    # Determinant handles rotated/sheared grids. CRS axis factors convert
-    # projected coordinate units (including feet) to metres.
-    coordinate_area = abs(float(transform.a * transform.e - transform.b * transform.d))
+    # Vector lengths support rotated/sheared grids.
     if crs.is_geographic:
-        # Local ellipsoidal approximation, adequate for one small SAR pixel.
-        # Determinant preserves rotated pixels; no CRS means no metric claim.
         lat_scale = 111_132.0
         lon_scale = 111_320.0 * math.cos(math.radians(center_lat))
-        return coordinate_area * lat_scale * lon_scale
-    unit_factor = getattr(crs, "linear_units_factor", None)
-    if not unit_factor or unit_factor[1] is None:
+        x_vector = (transform.a * lon_scale, transform.d * lat_scale)
+        y_vector = (transform.b * lon_scale, transform.e * lat_scale)
+        pixel_area = abs(float(transform.a * transform.e - transform.b * transform.d)) * lat_scale * lon_scale
+    else:
+        unit_factor = getattr(crs, "linear_units_factor", None)
+        if not unit_factor or unit_factor[1] is None:
+            return None
+        factor = float(unit_factor[1])
+        x_vector = (transform.a * factor, transform.d * factor)
+        y_vector = (transform.b * factor, transform.e * factor)
+        pixel_area = abs(float(transform.a * transform.e - transform.b * transform.d)) * factor ** 2
+    pixel_width_m = math.hypot(*x_vector)
+    pixel_height_m = math.hypot(*y_vector)
+    if (not math.isfinite(pixel_area) or pixel_area <= 0
+            or not math.isfinite(pixel_width_m) or not math.isfinite(pixel_height_m)
+            or max(pixel_width_m, pixel_height_m) > 250.0):
         return None
-    return coordinate_area * float(unit_factor[1]) ** 2
+    return pixel_area
 
 
 # ---------------------------------------------------------------------------
@@ -347,9 +357,9 @@ def compute_facts(
     valid_px = int(valid.sum())
 
     H, W = pred_mask.shape
-    west  = transform.c
+    west = transform.c
     north = transform.f
-    east  = west  + W * transform.a
+    east = west + W * transform.a
     south = north + H * transform.e
     center_lat = (north + south) / 2.0 if (crs and crs.is_geographic) else 0.0
     pixel_area_m2 = compute_pixel_area_m2(transform, crs, center_lat)
@@ -360,12 +370,17 @@ def compute_facts(
         "flood_pixel_count":          flood_px,
         "total_valid_pixels":         valid_px,
         "flood_fraction":             round(flood_px / max(valid_px, 1), 6),
-        "bbox":                       [round(west, 6), round(south, 6), round(east, 6), round(north, 6)],
+        "bbox":                       ([round(west, 6), round(south, 6), round(east, 6), round(north, 6)]
+                                       if pixel_area_m2 is not None else None),
         "crs":                        str(crs) if crs else "unknown",
         "bbox_crs":                   str(crs) if crs else None,
         "pixel_area_m2":              round(pixel_area_m2, 2) if pixel_area_m2 is not None else None,
         "pixel_resolution_approx_m":  round(math.sqrt(pixel_area_m2), 2) if pixel_area_m2 is not None else None,
         "spatial_measurement_available": pixel_area_m2 is not None,
+        "spatial_measurement_unavailable_reason": (
+            None if pixel_area_m2 is not None else
+            "CRS or pixel scale is missing, unsupported, or implausible; provide verified georeferencing."
+        ),
         "model_config":               ckpt.get("model_config", {}),
         "normalization":              ckpt.get("normalization", {}),
         "checkpoint":                 ckpt_path.name,

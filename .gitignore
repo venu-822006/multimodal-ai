@@ -80,4 +80,5 @@ job.log
 outputs/test_*/
 outputs/ready_*/
 outputs/uncertainty_smoke/
+outputs/hackathon_holdout_*/
 checkpoints/ready_run/
