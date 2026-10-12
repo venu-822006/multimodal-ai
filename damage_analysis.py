@@ -47,7 +47,8 @@ import rasterio
 from rasterio.crs import CRS
 from rasterio.features import shapes
 from shapely.geometry import box, shape
-from shapely.ops import unary_union
+from shapely.ops import transform as transform_geometry, unary_union
+from pyproj import CRS, Transformer
 
 
 def vectorize_flood_mask(mask_path: Path) -> tuple[object, dict]:
@@ -78,6 +79,20 @@ def vectorize_flood_mask(mask_path: Path) -> tuple[object, dict]:
     return flood_union, meta
 
 
+def _buffer_geographic_geometry(geometry, buffer_m: float):
+    """Create a local metric buffer for EPSG:4326 OSM geometries."""
+    if geometry is None or geometry.is_empty or buffer_m <= 0:
+        return geometry
+    center = geometry.centroid
+    local_crs = CRS.from_proj4(
+        f"+proj=aeqd +lat_0={center.y:.8f} +lon_0={center.x:.8f} "
+        "+datum=WGS84 +units=m +no_defs"
+    )
+    to_local = Transformer.from_crs("EPSG:4326", local_crs, always_xy=True).transform
+    to_wgs84 = Transformer.from_crs(local_crs, "EPSG:4326", always_xy=True).transform
+    return transform_geometry(to_wgs84, transform_geometry(to_local, geometry).buffer(buffer_m))
+
+
 def analyze_damage(
     flood_polygon,
     buildings_geojson: dict = None,
@@ -91,6 +106,7 @@ def analyze_damage(
     affected_buildings = 0
     affected_road_km = 0.0
     affected_bridges = 0
+    exposed = {"buildings": [], "roads": [], "bridges": []}
 
     if flood_polygon is None or flood_polygon.is_empty:
         return {
@@ -99,7 +115,11 @@ def analyze_damage(
             "road_length_affected_km": 0.0,
             "bridges_affected": 0,
             "bridges_affected_confidence": None,
-            "damage_status": "No mapped inundation detected in region"
+            "damage_status": "No mapped inundation detected in region",
+            "potentially_affected_assets": {
+                key: {"type": "FeatureCollection", "features": []} for key in exposed
+            },
+            "exposure_interpretation": "Spatial exposure only; not confirmation of physical damage or road closure.",
         }
 
     # 1. Buildings intersection
@@ -108,6 +128,11 @@ def analyze_damage(
             geom = shape(feat["geometry"])
             if geom.intersects(flood_polygon):
                 affected_buildings += 1
+                feature = dict(feat)
+                feature["properties"] = {
+                    **(feat.get("properties") or {}), "exposure": "potentially_affected_by_mapped_inundation"
+                }
+                exposed["buildings"].append(feature)
 
     # 2. Roads intersection (length in km)
     if roads_geojson and "features" in roads_geojson:
@@ -133,15 +158,25 @@ def analyze_damage(
             if geom.intersects(flood_polygon):
                 intersection_geom = geom.intersection(flood_polygon)
                 affected_road_km += geodesic_length_km(intersection_geom)
+                feature = dict(feat)
+                feature["properties"] = {
+                    **(feat.get("properties") or {}), "exposure": "intersects_mapped_inundation"
+                }
+                exposed["roads"].append(feature)
 
     # 3. Bridges intersection
     if bridges_geojson and "features" in bridges_geojson:
-        # Buffer flood mask slightly (e.g. 20m ~ 0.0002 deg) for bridges near water
-        flood_buffered = flood_polygon.buffer(0.0002)
+        # Include bridges within 20 ground metres of the mapped flood candidate.
+        flood_buffered = _buffer_geographic_geometry(flood_polygon, 20.0)
         for feat in bridges_geojson["features"]:
             geom = shape(feat["geometry"])
             if geom.intersects(flood_buffered):
                 affected_bridges += 1
+                feature = dict(feat)
+                feature["properties"] = {
+                    **(feat.get("properties") or {}), "exposure": "potentially_affected_by_mapped_inundation"
+                }
+                exposed["bridges"].append(feature)
 
     return {
         "buildings_affected": int(affected_buildings),
@@ -149,7 +184,14 @@ def analyze_damage(
         "road_length_affected_km": round(float(affected_road_km), 2),
         "bridges_affected": int(affected_bridges),
         "bridges_affected_confidence": None,
-        "wording_standard": "Reported counts represent structures/roads affected or potentially affected by mapped inundation."
+        "potentially_affected_assets": {
+            key: {"type": "FeatureCollection", "features": value} for key, value in exposed.items()
+        },
+        "exposure_interpretation": (
+            "Buildings and road lengths intersecting mapped inundation, plus bridges within 20 m, "
+            "are potentially affected. Spatial overlap does not confirm physical damage or road closure."
+        ),
+        "wording_standard": "Reported counts represent assets potentially affected by mapped inundation; they are not confirmed damage counts."
     }
 
 

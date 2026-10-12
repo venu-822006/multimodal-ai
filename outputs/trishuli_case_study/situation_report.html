@@ -138,8 +138,8 @@
     <div class="subtitle">Rapid Spaceborne Flood Damage Assessment | Track B: Multimodal AI Hackathon 2026</div>
   </div>
   <div class="meta-box">
-    <div><strong>Report ID:</strong> FS-27463</div>
-    <div><strong>Generated:</strong> 2026-10-12 21:51 UTC</div>
+    <div><strong>Report ID:</strong> FS-12768</div>
+    <div><strong>Generated:</strong> 2026-10-12 22:17 UTC</div>
     <div><strong>Model Checkpoint:</strong> best.pt</div>
   </div>
 </div>
@@ -156,7 +156,7 @@
     <div class="card-subtext">3.97 km roads | 0 bridges</div>
   </div>
   <div class="card">
-    <div class="card-title">3. Cut-Off Settlements</div>
+    <div class="card-title">3. Potential Access Loss (Modelled)</div>
     <div class="card-stat" style="color: #b91c1c;">2</div>
     <div class="card-subtext">2 connected | 0 unmapped</div>
   </div>
@@ -177,12 +177,16 @@
     <span>161.17 km²</span>
   </div>
   <div class="stat-row">
+    <span><strong>Model ambiguity (predictive entropy, uncalibrated):</strong></span>
+    <span>not available</span>
+  </div>
+  <div class="stat-row">
     <span><strong>Debris / Surface Change Candidate (Class B - Experimental):</strong></span>
     <span>89.51 km² (heuristic score, not calibrated: 0.75)</span>
   </div>
   <div class="stat-row">
-    <span><strong>Downstream Flood Propagation (Copernicus WorldDEM-30 D8):</strong></span>
-    <span>0.73 km (elevation drop: 159.9 m, hydraulic gradient: 219.0 m/km)</span>
+    <span><strong>Terrain-only D8 downslope screen (not a flood forecast):</strong></span>
+    <span>0.73 km (elevation drop: 159.9 m, terrain gradient: 219.0 m/km)</span>
   </div>
   <div class="stat-row">
     <span><strong>Segmentation Model:</strong></span>
@@ -210,26 +214,26 @@
 </div>
 
 <div class="section">
-  <h2>Question 3: Who Is Cut Off (Access & Road Connectivity to Nearest Medical Facility)</h2>
+  <h2>Question 3: Potential Access Loss (Road Connectivity Scenario)</h2>
   <table>
     <thead>
       <tr>
         <th>Settlement / Community</th>
         <th>Access State</th>
-        <th>Target Facility</th>
-        <th>Pre-event Road Distance</th>
+        <th>Target Town / Medical Facility</th>
+        <th>Pre-event Modeled Route Distance</th>
       </tr>
     </thead>
     <tbody>
       <tr>
               <td><strong>Betrawati Riverside Village</strong></td>
-              <td><span class="badge badge-danger">CUT_OFF</span></td>
+              <td><span class="badge badge-danger">POTENTIALLY CUT OFF (MODEL)</span></td>
               <td>Dhunche Health Post</td>
               <td>17.22 km</td>
             </tr>
 <tr>
               <td><strong>Ramche Settlement</strong></td>
-              <td><span class="badge badge-danger">CUT_OFF</span></td>
+              <td><span class="badge badge-danger">POTENTIALLY CUT OFF (MODEL)</span></td>
               <td>Dhunche Health Post</td>
               <td>8.9 km</td>
             </tr>
@@ -248,7 +252,7 @@
     </tbody>
   </table>
   <div style="font-size: 10.5px; color: #4b5563; margin-top: 8px;">
-    <strong>Summary:</strong> 2 communities cut off from road access to medical care; 2 routes remain viable; 0 unmapped.
+    <strong>Modelled scenario:</strong> 2 communities have no remaining route to a mapped town or medical facility after overlapping road edges are treated as impassable; 2 retain a mapped route; 0 are unknown. This is potential access loss, not a confirmed road closure. Verify routes in the field.
   </div>
 </div>
 
@@ -258,15 +262,13 @@
     <strong>उद्धार तथा राहत टोलीका लागि मुख्य वस्तुस्थिति:</strong><br>
     • कुल बाढी प्रभावित क्षेत्र: <strong>161.17 वर्ग कि.मि.</strong> (क्षेत्रफलको 14.06%)<br>
     • सम्भावित प्रभावित संरचनाहरू: <strong>0 घर/भवन</strong>, <strong>3.97 कि.मि. सडक खण्ड</strong>, र <strong>0 पुल</strong><br>
-    • सडक सम्पर्क विच्छेद: <strong>2 बस्तीहरू</strong> अस्पताल/मुख्य बजारसँगको सडक सम्पर्कबाट विच्छेद भएका छन् (2 सुरक्षित, 0 नक्सांकन नभएको)।
+    • मोडेलअनुसार सम्भावित सडक पहुँच अवरोध: <strong>2 बस्तीहरू</strong>मा नक्साङ्कित सडक खण्डहरू बाढी क्षेत्रमा परेका कारण वैकल्पिक मार्ग देखिएन (2 मा मार्ग देखियो, 0 अज्ञात)। यो पुष्टि भएको सडक बन्द अवस्था होइन; स्थलगत जाँच आवश्यक छ।
   </div>
 </div>
 
 <div class="footer">
   <strong>Data Sources & Attributions:</strong><br>
-  Contains modified Copernicus Sentinel data 2026. | © OpenStreetMap contributors (pre-event snapshot: 2026-08-25, ODbL).<br>
-  Produced using Copernicus WorldDEM-30 © DLR e.V. 2010–2014 and © Airbus Defence and Space GmbH 2014–2018 provided under COPERNICUS by the European Union and ESA; all rights reserved.<br>
-  Training dataset citation: Bountos et al., 2024 (KuroSiwo / Kuro Siwo: A Multimodal SAR Dataset for Flood Inundation Mapping, NeurIPS 2024).
+  Contains modified Copernicus Sentinel data 2026.<br>Produced using Copernicus WorldDEM-30 © DLR e.V. 2010–2014 and © Airbus Defence and Space GmbH 2014–2018 provided under COPERNICUS by the European Union and ESA; all rights reserved.<br>© OpenStreetMap contributors (via ohsome API).<br>Training dataset citation: Bountos et al., 2024 (KuroSiwo / Kuro Siwo: A Multimodal SAR Dataset for Flood Inundation Mapping, NeurIPS 2024).
 </div>
 
 </body>

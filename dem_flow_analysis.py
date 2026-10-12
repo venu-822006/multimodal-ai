@@ -9,9 +9,9 @@ Implements the Track B Bonus Requirement:
 
 Core Capabilities:
   1. Computes D8 steepest-descent flow direction from Copernicus WorldDEM-30.
-  2. Traces downstream flood propagation vectors from the inundation footprint.
-  3. Projects propagation length (km), elevation drop (m), and hydraulic gradient (m/km).
-  4. Intersects downstream propagation corridor with downstream settlements & roads.
+  2. Traces a terrain-only D8 downslope screening path from the mapped inundation.
+  3. Reports path length (km), elevation drop (m), and terrain gradient (m/km).
+  4. Flags mapped settlements near the screening path for human review.
   5. Exports GeoJSON downstream vector path and structured risk metrics for facts.json.
 """
 
@@ -29,8 +29,12 @@ if hasattr(sys.stderr, "reconfigure"):
 import numpy as np
 import rasterio
 from rasterio.crs import CRS
+from rasterio.enums import Resampling
 from rasterio.transform import Affine, from_bounds
+from rasterio.warp import reproject, transform as transform_coords
+from pyproj import Geod, Transformer
 from shapely.geometry import LineString, Point, mapping, shape
+from shapely.ops import transform as transform_geometry
 
 
 D8_OFFSETS = {
@@ -77,7 +81,12 @@ def generate_synthetic_copernicus_dem(
     return dem, transform, crs
 
 
-def compute_d8_flow_directions(dem: np.ndarray, cell_size_m: float = 30.0) -> np.ndarray:
+def compute_d8_flow_directions(
+    dem: np.ndarray,
+    transform: Affine = None,
+    crs: CRS = None,
+    cell_size_m: float = 30.0,
+) -> np.ndarray:
     """
     Compute D8 steepest-descent flow direction for each grid cell.
     Returns array of D8 direction codes (1, 2, 4, 8, 16, 32, 64, 128).
@@ -85,26 +94,38 @@ def compute_d8_flow_directions(dem: np.ndarray, cell_size_m: float = 30.0) -> np
     h, w = dem.shape
     flow_dir = np.zeros((h, w), dtype=np.uint8)
 
-    diag_dist = cell_size_m * math.sqrt(2.0)
-
     for r in range(1, h - 1):
         for c in range(1, w - 1):
             center = dem[r, c]
+            if not np.isfinite(center):
+                continue
+            if transform is None or crs is None:
+                dx_m = dy_m = cell_size_m
+            elif crs.is_geographic:
+                latitude = transform.f + (r + 0.5) * transform.e
+                dx_m = abs(transform.a) * 111_320.0 * max(0.01, math.cos(math.radians(latitude)))
+                dy_m = abs(transform.e) * 111_139.0
+            else:
+                dx_m = math.hypot(transform.a, transform.d)
+                dy_m = math.hypot(transform.b, transform.e)
             max_drop = 0.0
             best_code = 0
 
             neighbors = [
-                (center - dem[r, c + 1], cell_size_m, 1),
-                (center - dem[r + 1, c + 1], diag_dist, 2),
-                (center - dem[r + 1, c], cell_size_m, 4),
-                (center - dem[r + 1, c - 1], diag_dist, 8),
-                (center - dem[r, c - 1], cell_size_m, 16),
-                (center - dem[r - 1, c - 1], diag_dist, 32),
-                (center - dem[r - 1, c], cell_size_m, 64),
-                (center - dem[r - 1, c + 1], diag_dist, 128),
+                (r, c + 1, dx_m, 1),
+                (r + 1, c + 1, math.hypot(dx_m, dy_m), 2),
+                (r + 1, c, dy_m, 4),
+                (r + 1, c - 1, math.hypot(dx_m, dy_m), 8),
+                (r, c - 1, dx_m, 16),
+                (r - 1, c - 1, math.hypot(dx_m, dy_m), 32),
+                (r - 1, c, dy_m, 64),
+                (r - 1, c + 1, math.hypot(dx_m, dy_m), 128),
             ]
 
-            for diff, dist, code in neighbors:
+            for nr, nc, dist, code in neighbors:
+                if not np.isfinite(dem[nr, nc]) or dist <= 0:
+                    continue
+                diff = center - dem[nr, nc]
                 gradient = diff / dist
                 if gradient > max_drop:
                     max_drop = gradient
@@ -120,13 +141,14 @@ def trace_downstream_flood_path(
     dem: np.ndarray,
     transform: Affine,
     max_steps: int = 400,
+    crs: CRS = None,
 ) -> dict:
     """
     Trace downstream flow path starting from the lowest inundation boundary
     cells and routing downhill following the D8 steepest-descent path.
     """
     h, w = flood_mask.shape
-    flood_coords = np.argwhere(flood_mask == 1)
+    flood_coords = np.argwhere((flood_mask == 1) & np.isfinite(dem))
 
     if len(flood_coords) == 0:
         return {
@@ -136,12 +158,24 @@ def trace_downstream_flood_path(
             "flow_path_coords": [],
         }
 
-    # Start trace at the lowest elevation flooded cell (downstream outlet of flood pool)
-    flood_elevations = [dem[r, c] for r, c in flood_coords]
+    # Prefer the lowest valid cell on the flood boundary. This is a terrain
+    # screening seed only; it does not estimate flood volume or hydraulics.
+    flood_set = {tuple(rc) for rc in flood_coords.tolist()}
+    boundary_coords = []
+    h, w = flood_mask.shape
+    for r, c in flood_coords:
+        if any(
+            (r + dr, c + dc) not in flood_set
+            for dr in (-1, 0, 1) for dc in (-1, 0, 1)
+            if (dr or dc) and 0 <= r + dr < h and 0 <= c + dc < w
+        ):
+            boundary_coords.append((r, c))
+    seed_coords = np.asarray(boundary_coords or flood_coords.tolist(), dtype=np.int64)
+    flood_elevations = [dem[r, c] for r, c in seed_coords]
     min_idx = int(np.argmin(flood_elevations))
-    start_r, start_c = flood_coords[min_idx]
+    start_r, start_c = seed_coords[min_idx]
 
-    flow_dirs = compute_d8_flow_directions(dem)
+    flow_dirs = compute_d8_flow_directions(dem, transform=transform, crs=crs)
 
     path_cells = [(start_r, start_c)]
     visited = {(start_r, start_c)}
@@ -158,7 +192,7 @@ def trace_downstream_flood_path(
                     if dr == 0 and dc == 0:
                         continue
                     nr, nc = curr_r + dr, curr_c + dc
-                    if 0 <= nr < h and 0 <= nc < w and (nr, nc) not in visited:
+                    if 0 <= nr < h and 0 <= nc < w and (nr, nc) not in visited and np.isfinite(dem[nr, nc]):
                         drop = dem[curr_r, curr_c] - dem[nr, nc]
                         if drop > best_drop:
                             best_drop = drop
@@ -180,6 +214,9 @@ def trace_downstream_flood_path(
     geo_coords = []
     for r, c in path_cells:
         x, y = rasterio.transform.xy(transform, r, c)
+        if crs is not None and crs.to_epsg() != 4326:
+            lon, lat = transform_coords(crs, "EPSG:4326", [x], [y])
+            x, y = lon[0], lat[0]
         geo_coords.append([round(x, 6), round(y, 6)])
 
     # Compute length and elevation drop
@@ -189,10 +226,12 @@ def trace_downstream_flood_path(
 
     # Approximate length in km using geodesic line
     if len(geo_coords) >= 2:
-        line = LineString(geo_coords)
-        length_deg = line.length
-        # 1 deg ~ 111 km
-        length_km = round(length_deg * 111.0, 2)
+        geod = Geod(ellps="WGS84")
+        length_m = sum(
+            geod.inv(x1, y1, x2, y2)[2]
+            for (x1, y1), (x2, y2) in zip(geo_coords, geo_coords[1:])
+        )
+        length_km = round(length_m / 1000.0, 2)
     else:
         length_km = 0.0
 
@@ -205,6 +244,7 @@ def trace_downstream_flood_path(
         "elevation_end_m": round(end_elev, 1),
         "elevation_drop_m": round(elev_drop, 1),
         "hydraulic_gradient_m_per_km": gradient_m_per_km,
+        "terrain_gradient_m_per_km": gradient_m_per_km,
         "flow_path_steps": len(geo_coords),
         "flow_path_coords": geo_coords,
     }
@@ -213,24 +253,31 @@ def trace_downstream_flood_path(
 def analyze_downstream_exposure(
     flow_coords: list[list[float]],
     settlements: list[dict],
-    buffer_deg: float = 0.003,  # ~300m corridor buffer
+    buffer_m: float = 300.0,
 ) -> list[dict]:
-    """Identify downstream communities intersecting the projected flood propagation path."""
+    """Flag mapped settlements near a terrain screening line for human review."""
     if len(flow_coords) < 2:
         return []
 
     path_line = LineString(flow_coords)
-    hazard_corridor = path_line.buffer(buffer_deg)
+    center = path_line.centroid
+    local_crs = CRS.from_proj4(
+        f"+proj=aeqd +lat_0={center.y:.8f} +lon_0={center.x:.8f} "
+        "+datum=WGS84 +units=m +no_defs"
+    )
+    to_local = Transformer.from_crs("EPSG:4326", local_crs, always_xy=True).transform
+    local_line = transform_geometry(to_local, path_line)
+    screening_corridor = local_line.buffer(buffer_m)
 
     exposed = []
     for s in settlements:
         geom = shape(s.get("geometry", {}))
         pt = geom.centroid if geom.geom_type != "Point" else geom
-        if pt.intersects(hazard_corridor):
+        if transform_geometry(to_local, pt).intersects(screening_corridor):
             exposed.append({
                 "name": s.get("properties", {}).get("name", "Downstream Community"),
-                "status": "AT_RISK_DOWNSTREAM",
-                "warning": "Located within downstream hydraulic propagation buffer",
+                "status": "NEAR_TERRAIN_SCREENING_PATH",
+                "warning": "Terrain-only screening proximity; not a validated flood-risk forecast",
             })
 
     return exposed
@@ -248,34 +295,89 @@ def run_dem_flow_analysis(
         flood_mask = src.read(1)
         transform = src.transform
         crs = src.crs
-        bounds = src.bounds
+        if src.crs is None:
+            raise ValueError("Flood mask must have a CRS for terrain alignment.")
+        dem_transform = src.transform
+        dem_crs = src.crs
+        dem_shape = (src.height, src.width)
 
-    if dem_path and dem_path.exists():
+    if dem_path is not None:
+        if not dem_path.is_file():
+            raise FileNotFoundError(f"Requested DEM file not found: {dem_path}")
         with rasterio.open(dem_path) as dem_src:
-            dem = dem_src.read(1).astype(np.float32)
+            if dem_src.crs is None:
+                raise ValueError("DEM must have a CRS for terrain alignment.")
+            source_dem = dem_src.read(1, masked=True).astype(np.float32).filled(np.nan)
+            dem = np.full(dem_shape, np.nan, dtype=np.float32)
+            reproject(
+                source=source_dem,
+                destination=dem,
+                src_transform=dem_src.transform,
+                src_crs=dem_src.crs,
+                src_nodata=np.nan if dem_src.nodata is None else dem_src.nodata,
+                dst_transform=dem_transform,
+                dst_crs=dem_crs,
+                dst_nodata=np.nan,
+                resampling=Resampling.bilinear,
+            )
     else:
         # Check standard data/terrain directory
         default_dem = Path("data/terrain/copernicus_worlddem30.tif")
         if default_dem.exists():
             with rasterio.open(default_dem) as dem_src:
-                dem = dem_src.read(1).astype(np.float32)
+                if dem_src.crs is None:
+                    raise ValueError("DEM must have a CRS for terrain alignment.")
+                source_dem = dem_src.read(1, masked=True).astype(np.float32).filled(np.nan)
+                dem = np.full(dem_shape, np.nan, dtype=np.float32)
+                reproject(
+                    source=source_dem,
+                    destination=dem,
+                    src_transform=dem_src.transform,
+                    src_crs=dem_src.crs,
+                    src_nodata=np.nan if dem_src.nodata is None else dem_src.nodata,
+                    dst_transform=dem_transform,
+                    dst_crs=dem_crs,
+                    dst_nodata=np.nan,
+                    resampling=Resampling.bilinear,
+                )
         else:
-            print("  [DEM Note] No Copernicus WorldDEM-30 raster provided. Skipping downstream flow path tracing.")
+            print("  [DEM Note] No DEM raster provided. Skipping the optional terrain screen.")
             return {
                 "status": "SKIPPED",
-                "reason": "No Copernicus WorldDEM-30 elevation raster provided for this area.",
+                "reason": "No DEM elevation raster was provided or found in the configured local data path.",
                 "downstream_length_km": 0.0,
                 "elevation_start_m": None,
                 "elevation_end_m": None,
                 "elevation_drop_m": 0.0,
-                "hydraulic_gradient_m_per_km": 0.0,
+            "hydraulic_gradient_m_per_km": 0.0,
+            "terrain_gradient_m_per_km": 0.0,
                 "flow_path_steps": 0,
                 "flow_path_coords": [],
                 "geojson_path": None,
-                "downstream_communities_at_risk": [],
+                "downstream_communities_near_screening_path": [],
             }
 
-    flow_results = trace_downstream_flood_path(flood_mask, dem, transform)
+    if not np.any((flood_mask == 1) & np.isfinite(dem)):
+        return {
+            "status": "NO_DEM_COVERAGE",
+            "reason": "The supplied DEM does not overlap any mapped flood pixels after reprojection.",
+            "downstream_length_km": 0.0,
+            "elevation_start_m": None,
+            "elevation_end_m": None,
+            "elevation_drop_m": 0.0,
+            "terrain_gradient_m_per_km": 0.0,
+            "hydraulic_gradient_m_per_km": 0.0,
+            "flow_path_steps": 0,
+            "flow_path_coords": [],
+            "geojson_path": None,
+            "downstream_communities_near_screening_path": [],
+        }
+
+    flow_results = trace_downstream_flood_path(flood_mask, dem, transform, crs=crs)
+    flow_results["interpretation"] = (
+        "Terrain-only D8 downslope screening path from the mapped flood boundary; "
+        "not a hydrodynamic forecast, travel-time estimate, or validated hazard prediction."
+    )
 
     # Export GeoJSON flow path
     coords = flow_results.get("flow_path_coords", [])
@@ -290,10 +392,10 @@ def run_dem_flow_analysis(
                         "coordinates": coords,
                     },
                     "properties": {
-                        "hazard": "Downstream Flood Propagation Path",
+                    "hazard": "Terrain-only D8 downslope screening path (not a forecast)",
                         "length_km": flow_results["downstream_length_km"],
                         "elevation_drop_m": flow_results["elevation_drop_m"],
-                        "gradient_m_per_km": flow_results["hydraulic_gradient_m_per_km"],
+                        "gradient_m_per_km": flow_results.get("terrain_gradient_m_per_km", flow_results.get("hydraulic_gradient_m_per_km")),
                     },
                 }
             ],
@@ -309,7 +411,7 @@ def run_dem_flow_analysis(
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--flood-mask", type=Path, required=True, help="Predicted flood mask GeoTIFF")
-    p.add_argument("--dem", type=Path, default=None, help="Optional Copernicus DEM GeoTIFF")
+    p.add_argument("--dem", type=Path, default=None, help="Optional georeferenced DEM GeoTIFF")
     p.add_argument("--out-dir", type=Path, default=Path("outputs"))
     p.add_argument("--out-json", type=Path, default=None)
     args = p.parse_args()
@@ -317,11 +419,11 @@ def main():
     results = run_dem_flow_analysis(args.flood_mask, args.dem, args.out_dir)
 
     print("\n" + "=" * 65)
-    print(" COPERNICUS DEM DOWNSTREAM FLOW-PATH ANALYSIS (BONUS)")
+    print(" D8 DEM TERRAIN-ONLY SCREENING (BONUS)")
     print("=" * 65)
     print(f"  Downstream Propagation Path: {results['downstream_length_km']} km")
     print(f"  Total Elevation Drop:        {results['elevation_drop_m']} m")
-    print(f"  Hydraulic Gradient:          {results['hydraulic_gradient_m_per_km']} m/km")
+    print(f"  Terrain Gradient:            {results.get('terrain_gradient_m_per_km', results['hydraulic_gradient_m_per_km'])} m/km")
     if "geojson_path" in results:
         print(f"  GeoJSON Path:                {results['geojson_path']}")
     print("=" * 65)

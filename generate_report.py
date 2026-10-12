@@ -9,12 +9,13 @@ three core questions from the problem statement:
   2. WHAT WAS DAMAGED:
      - Affected buildings count, affected road length (km), affected bridges count.
      - Strictly formatted as "affected or potentially affected by mapped inundation".
-  3. WHO IS CUT OFF:
-     - Settlements by state: CONNECTED, CUT_OFF, and UNKNOWN.
-     - Specific list of isolated communities.
+  3. WHO MAY HAVE LOST ACCESS UNDER THE ROUTE SCENARIO:
+     - Settlements by modeled state: CONNECTED, CUT_OFF, and UNKNOWN.
+     - A CUT_OFF result is not a confirmed road closure.
 
 EVERY NUMBER COMES DIRECTLY FROM facts.json.
-Includes all mandatory European Space Agency, Copernicus, OSM & KuroSiwo attributions.
+Renders source attributions recorded in facts.json; it does not invent a provider
+or licence when input metadata is missing.
 
 Usage:
     python generate_report.py \
@@ -28,6 +29,12 @@ from html import escape
 import json
 import sys
 from datetime import datetime
+
+# Conditional attribution references, emitted only if the corresponding input
+# provider/product is verified: "Contains modified Copernicus Sentinel data";
+# "Copernicus WorldDEM-30 © DLR e.V."; "Airbus Defence and Space GmbH";
+# "© OpenStreetMap contributors"; and the "Kuro Siwo" dataset citation.
+# Caller-supplied imagery has no inferred provider attribution by default.
 from pathlib import Path
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -194,7 +201,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <div class="card-subtext">{{ROAD_KM_AFFECTED}} km roads | {{BRIDGES_AFFECTED}} bridges</div>
   </div>
   <div class="card">
-    <div class="card-title">3. Cut-Off Settlements</div>
+    <div class="card-title">3. Potential Access Loss (Modelled)</div>
     <div class="card-stat" style="color: #b91c1c;">{{CUT_OFF_COUNT}}</div>
     <div class="card-subtext">{{CONNECTED_COUNT}} connected | {{UNKNOWN_COUNT}} unmapped</div>
   </div>
@@ -215,11 +222,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <span>{{FLOOD_AREA_KM2}} km²</span>
   </div>
   <div class="stat-row">
+    <span><strong>Model ambiguity (predictive entropy, uncalibrated):</strong></span>
+    <span>{{UNCERTAINTY_SUMMARY}}</span>
+  </div>
+  <div class="stat-row">
     <span><strong>Debris / Surface Change Candidate (Class B - Experimental):</strong></span>
     <span>{{DEBRIS_AREA_KM2}} km² (heuristic score, not calibrated: {{DEBRIS_CONFIDENCE}})</span>
   </div>
   <div class="stat-row">
-    <span><strong>Downstream Flood Propagation (Copernicus WorldDEM-30 D8):</strong></span>
+    <span><strong>Terrain-only D8 downslope screen (not a flood forecast):</strong></span>
     <span>{{DEM_FLOW_INFO}}</span>
   </div>
   <div class="stat-row">
@@ -248,14 +259,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 </div>
 
 <div class="section">
-  <h2>Question 3: Who Is Cut Off (Access & Road Connectivity to Nearest Medical Facility)</h2>
+  <h2>Question 3: Potential Access Loss (Road Connectivity Scenario)</h2>
   <table>
     <thead>
       <tr>
         <th>Settlement / Community</th>
         <th>Access State</th>
-        <th>Target Facility</th>
-        <th>Pre-event Road Distance</th>
+        <th>Target Town / Medical Facility</th>
+        <th>Pre-event Modeled Route Distance</th>
       </tr>
     </thead>
     <tbody>
@@ -263,7 +274,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     </tbody>
   </table>
   <div style="font-size: 10.5px; color: #4b5563; margin-top: 8px;">
-    <strong>Summary:</strong> {{CUT_OFF_COUNT}} communities cut off from road access to medical care; {{CONNECTED_COUNT}} routes remain viable; {{UNKNOWN_COUNT}} unmapped.
+    <strong>Modelled scenario:</strong> {{CUT_OFF_COUNT}} communities have no remaining route to a mapped town or medical facility after overlapping road edges are treated as impassable; {{CONNECTED_COUNT}} retain a mapped route; {{UNKNOWN_COUNT}} are unknown. This is potential access loss, not a confirmed road closure. Verify routes in the field.
   </div>
 </div>
 
@@ -273,15 +284,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <strong>उद्धार तथा राहत टोलीका लागि मुख्य वस्तुस्थिति:</strong><br>
     • कुल बाढी प्रभावित क्षेत्र: <strong>{{FLOOD_AREA_KM2}} वर्ग कि.मि.</strong> (क्षेत्रफलको {{FLOOD_FRACTION}}%)<br>
     • सम्भावित प्रभावित संरचनाहरू: <strong>{{BUILDINGS_AFFECTED}} घर/भवन</strong>, <strong>{{ROAD_KM_AFFECTED}} कि.मि. सडक खण्ड</strong>, र <strong>{{BRIDGES_AFFECTED}} पुल</strong><br>
-    • सडक सम्पर्क विच्छेद: <strong>{{CUT_OFF_COUNT}} बस्तीहरू</strong> अस्पताल/मुख्य बजारसँगको सडक सम्पर्कबाट विच्छेद भएका छन् ({{CONNECTED_COUNT}} सुरक्षित, {{UNKNOWN_COUNT}} नक्सांकन नभएको)।
+    • मोडेलअनुसार सम्भावित सडक पहुँच अवरोध: <strong>{{CUT_OFF_COUNT}} बस्तीहरू</strong>मा नक्साङ्कित सडक खण्डहरू बाढी क्षेत्रमा परेका कारण वैकल्पिक मार्ग देखिएन ({{CONNECTED_COUNT}} मा मार्ग देखियो, {{UNKNOWN_COUNT}} अज्ञात)। यो पुष्टि भएको सडक बन्द अवस्था होइन; स्थलगत जाँच आवश्यक छ।
   </div>
 </div>
 
 <div class="footer">
   <strong>Data Sources & Attributions:</strong><br>
-  Contains modified Copernicus Sentinel data 2026. | © OpenStreetMap contributors (pre-event snapshot: {{OSM_SNAPSHOT_DATE}}, ODbL).<br>
-  Produced using Copernicus WorldDEM-30 © DLR e.V. 2010–2014 and © Airbus Defence and Space GmbH 2014–2018 provided under COPERNICUS by the European Union and ESA; all rights reserved.<br>
-  Training dataset citation: Bountos et al., 2024 (KuroSiwo / Kuro Siwo: A Multimodal SAR Dataset for Flood Inundation Mapping, NeurIPS 2024).
+  {{DATA_ATTRIBUTIONS}}
 </div>
 
 </body>
@@ -305,46 +314,71 @@ def render_report(facts_path: Path, out_html_path: Path, out_pdf_path: Path = No
     res = data.get("pixel_resolution_approx_m", data.get("pixel_resolution_m"))
     ckpt = data.get("checkpoint", "best.pt")
 
-    debris_area = data.get("debris_area_km2", 0.0)
+    debris_area = data.get("debris_area_km2")
     debris_conf = data.get("debris_confidence", "not available")
 
     bldgs = data.get("buildings_affected")
     roads_km = data.get("road_length_affected_km")
     bridges = data.get("bridges_affected")
     bridges_conf = data.get("bridges_affected_confidence", "not calibrated")
+    uncertainty = data.get("uncertainty", {})
+    uncertainty_mean = uncertainty.get("mean") if isinstance(uncertainty, dict) else None
+    uncertainty_high = uncertainty.get("fraction_at_least_0_5") if isinstance(uncertainty, dict) else None
+    uncertainty_summary = (
+        f"mean {uncertainty_mean:.3f}; {uncertainty_high * 100:.1f}% of valid pixels ≥ 0.5"
+        if isinstance(uncertainty_mean, (int, float)) and isinstance(uncertainty_high, (int, float))
+        else "not available"
+    )
+    attributions = data.get("data_attributions") or [
+        "Data provenance and licences were not recorded for this analysis."
+    ]
+    attribution_html = "<br>".join(escape(str(item)) for item in attributions)
 
-    settlement_counts = data.get("settlement_counts", {"CONNECTED": 0, "CUT_OFF": 0, "UNKNOWN": 0})
-    cut_off = settlement_counts.get("CUT_OFF", 0)
-    connected = settlement_counts.get("CONNECTED", 0)
-    unknown = settlement_counts.get("UNKNOWN", 0)
+    settlement_counts = data.get("settlement_counts")
+    cut_off = settlement_counts.get("CUT_OFF") if isinstance(settlement_counts, dict) else None
+    connected = settlement_counts.get("CONNECTED") if isinstance(settlement_counts, dict) else None
+    unknown = settlement_counts.get("UNKNOWN") if isinstance(settlement_counts, dict) else None
 
-    settlements = data.get("settlements", [])
-    if settlements:
+    settlements = data.get("settlements")
+    if isinstance(settlements, list) and settlements:
         rows = []
         for s in settlements[:5]:  # show up to 5 on one-page
             state = s.get("state", "UNKNOWN")
+            display_state = "POTENTIALLY CUT OFF (MODEL)" if state == "CUT_OFF" else state
             badge_cls = "badge-danger" if state == "CUT_OFF" else ("badge-success" if state == "CONNECTED" else "badge-warning")
             row = f"""<tr>
               <td><strong>{escape(str(s.get('settlement', 'Village')))}</strong></td>
-              <td><span class="badge {badge_cls}">{state}</span></td>
-              <td>{escape(str(s.get('target', 'Regional Hospital')))}</td>
+              <td><span class="badge {badge_cls}">{escape(display_state)}</span></td>
+              <td>{escape(str(s.get('target', 'Mapped destination')))}</td>
               <td>{escape(str(s.get('pre_distance_km', 'N/A')))} km</td>
             </tr>"""
             rows.append(row)
         settlement_rows = "\n".join(rows)
-    else:
+    elif isinstance(settlements, list):
         settlement_rows = """<tr>
           <td colspan="4" style="text-align: center; color: #6b7280; font-style: italic;">
             No mapped settlements recorded within this bounding box in pre-event OSM data.
+          </td>
+        </tr>"""
+    else:
+        settlement_rows = """<tr>
+          <td colspan="4" style="text-align: center; color: #6b7280; font-style: italic;">
+            Connectivity analysis was not available for this run.
           </td>
         </tr>"""
 
     dem_info = data.get("dem_flow_analysis", {})
     dem_len = dem_info.get("downstream_length_km")
     if dem_len is not None and dem_len > 0:
-        dem_flow_text = f"{dem_len} km (elevation drop: {dem_info.get('elevation_drop_m', 0)} m, hydraulic gradient: {dem_info.get('hydraulic_gradient_m_per_km', 0)} m/km)"
+        dem_flow_text = f"{dem_len} km (elevation drop: {dem_info.get('elevation_drop_m', 0)} m, terrain gradient: {dem_info.get('terrain_gradient_m_per_km', dem_info.get('hydraulic_gradient_m_per_km', 0))} m/km)"
     else:
-        dem_flow_text = "No downstream propagation path traced"
+        dem_status = dem_info.get("status")
+        if dem_status == "SKIPPED":
+            dem_flow_text = "not available (no DEM supplied)"
+        elif dem_status == "NO_DEM_COVERAGE":
+            dem_flow_text = "not available (DEM does not cover mapped flood pixels)"
+        else:
+            dem_flow_text = "No terrain-only D8 path could be traced from the available DEM"
 
     html = HTML_TEMPLATE
     replacements = {
@@ -356,6 +390,7 @@ def render_report(facts_path: Path, out_html_path: Path, out_pdf_path: Path = No
         "{{FLOOD_FRACTION}}": str(flood_frac) if flood_frac is not None else "not available",
         "{{BBOX}}": bbox,
         "{{RESOLUTION}}": str(res) if res is not None else "not available",
+        "{{UNCERTAINTY_SUMMARY}}": uncertainty_summary,
         "{{DEBRIS_AREA_KM2}}": f"{debris_area:.2f}" if isinstance(debris_area, (int, float)) else "not available",
         "{{DEBRIS_CONFIDENCE}}": str(debris_conf),
         "{{DEM_FLOW_INFO}}": dem_flow_text,
@@ -364,9 +399,10 @@ def render_report(facts_path: Path, out_html_path: Path, out_pdf_path: Path = No
         "{{BRIDGES_AFFECTED}}": str(bridges) if bridges is not None else "not available",
         "{{BRIDGES_CONFIDENCE}}": str(bridges_conf),
         "{{OSM_SNAPSHOT_DATE}}": str(data.get("osm_snapshot_date", "not recorded")),
-        "{{CUT_OFF_COUNT}}": str(cut_off),
-        "{{CONNECTED_COUNT}}": str(connected),
-        "{{UNKNOWN_COUNT}}": str(unknown),
+        "{{DATA_ATTRIBUTIONS}}": attribution_html,
+        "{{CUT_OFF_COUNT}}": str(cut_off) if isinstance(cut_off, int) else "not available",
+        "{{CONNECTED_COUNT}}": str(connected) if isinstance(connected, int) else "not available",
+        "{{UNKNOWN_COUNT}}": str(unknown) if isinstance(unknown, int) else "not available",
         "{{SETTLEMENT_ROWS}}": settlement_rows,
     }
 

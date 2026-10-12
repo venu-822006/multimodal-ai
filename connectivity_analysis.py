@@ -11,8 +11,8 @@ FloodSight architecture rules:
     3. Remove roads and bridges that intersect the flood mask (with a buffer).
     4. Re-test the route:
        - CONNECTED: A route still exists after removing flooded roads.
-       - CUT_OFF:   A route existed before the flood and does not now.
-       - UNKNOWN:   No route existed even pre-event, or no usable road/target was mapped.
+       - CUT_OFF:   No route remains under the explicit road-disruption scenario.
+       - UNKNOWN:   No baseline route or usable road/destination was mapped.
 
   Output:
     Updates facts.json with:
@@ -52,7 +52,8 @@ import numpy as np
 import rasterio
 from rasterio.features import shapes
 from shapely.geometry import LineString, Point, shape
-from shapely.ops import unary_union
+from shapely.ops import transform as transform_geometry, unary_union
+from pyproj import CRS, Transformer
 
 
 def haversine_km(lon1: float, lat1: float, lon2: float, lat2: float) -> float:
@@ -115,26 +116,44 @@ def find_nearest_node(graph: nx.Graph, point: Point) -> tuple[tuple, float]:
     return best_node, min_dist
 
 
+def _buffer_flood_in_metres(flood_polygon, buffer_m: float):
+    """Buffer an EPSG:4326 flood candidate by a ground distance, not degrees."""
+    if flood_polygon is None or flood_polygon.is_empty or buffer_m <= 0:
+        return flood_polygon
+    center = flood_polygon.centroid
+    local_crs = CRS.from_proj4(
+        f"+proj=aeqd +lat_0={center.y:.8f} +lon_0={center.x:.8f} "
+        "+datum=WGS84 +units=m +no_defs"
+    )
+    to_local = Transformer.from_crs("EPSG:4326", local_crs, always_xy=True).transform
+    to_wgs84 = Transformer.from_crs(local_crs, "EPSG:4326", always_xy=True).transform
+    return transform_geometry(to_wgs84, transform_geometry(to_local, flood_polygon).buffer(buffer_m))
+
+
 def analyze_connectivity(
     flood_polygon,
     road_graph: nx.Graph,
     settlements: list[dict],
     hospitals: list[dict],
-    buffer_deg: float = 0.0003,  # ~30m buffer around flooded roads
+    towns: list[dict] = None,
+    disruption_buffer_m: float = 30.0,
+    max_settlement_snap_km: float = 2.0,
+    max_destination_snap_km: float = 2.0,
 ) -> dict:
     """
     Run 3-state connectivity classification:
       - CONNECTED
-      - CUT_OFF
+      - CUT_OFF (modelled potential loss, not confirmed closure)
       - UNKNOWN
     """
     counts = {"CONNECTED": 0, "CUT_OFF": 0, "UNKNOWN": 0}
     detailed = []
 
-    # Prepare flooded roads subgraph
+    # This is a scenario assumption, not evidence that a road is physically
+    # impassable: any edge intersecting this buffered candidate is excluded.
     post_graph = road_graph.copy()
     if flood_polygon is not None and not flood_polygon.is_empty:
-        flood_buffered = flood_polygon.buffer(buffer_deg)
+        flood_buffered = _buffer_flood_in_metres(flood_polygon, disruption_buffer_m)
         edges_to_remove = []
         for u, v, data in post_graph.edges(data=True):
             geom = data.get("geom")
@@ -142,49 +161,67 @@ def analyze_connectivity(
                 edges_to_remove.append((u, v))
         post_graph.remove_edges_from(edges_to_remove)
 
-    # Pre-map target nodes (hospitals)
+    # Medical facilities and mapped towns are possible destinations.
     target_nodes = []
     for h in hospitals:
         geom = shape(h["geometry"])
         pt = geom.centroid if geom.geom_type != "Point" else geom
         node, dist = find_nearest_node(road_graph, pt)
-        if node and dist < 2.0:  # must be within 2km of road network
-            name = h.get("properties", {}).get("name", "Hospital")
-            target_nodes.append((node, name))
+        if node and dist <= max_destination_snap_km:
+            name = h.get("properties", {}).get("name") or "Medical facility"
+            target_nodes.append((node, name, "medical_facility", dist))
+    for town in towns or []:
+        geom = shape(town["geometry"])
+        pt = geom.centroid if geom.geom_type != "Point" else geom
+        node, dist = find_nearest_node(road_graph, pt)
+        if node and dist <= max_destination_snap_km:
+            props = town.get("properties", {})
+            name = props.get("name") or props.get("place") or "Town"
+            target_nodes.append((node, name, "town", dist))
 
     for s in settlements:
-        s_name = s.get("properties", {}).get("name", "Unnamed Village")
+        s_props = s.get("properties", {})
+        s_name = s_props.get("name", "Unnamed Village")
         geom = shape(s["geometry"])
         pt = geom.centroid if geom.geom_type != "Point" else geom
 
         s_node, s_dist = find_nearest_node(road_graph, pt)
+        destinations = [
+            t for t in target_nodes
+            if not (t[2] == "town" and str(t[1]).strip().casefold() == str(s_name).strip().casefold())
+        ]
 
         # If village is isolated or road unmapped pre-event -> UNKNOWN
-        if s_node is None or s_dist > 5.0 or not target_nodes:
+        if s_node is None or s_dist > max_settlement_snap_km or not destinations:
             counts["UNKNOWN"] += 1
             detailed.append({
                 "settlement": s_name,
                 "state": "UNKNOWN",
                 "longitude": float(pt.x),
                 "latitude": float(pt.y),
-                "reason": "No usable road or hospital target mapped pre-event"
+                "reason": "No usable road or mapped town/medical destination in the pre-event snapshot"
             })
             continue
 
         # Check pre-event route
         pre_route_exists = False
         best_target_name = "None"
+        best_target_type = None
         min_pre_dist = float("inf")
-        target_node_chosen = None
+        reachable_targets = []
+        best_target_snap_km = None
 
-        for t_node, t_name in target_nodes:
+        for t_node, t_name, t_type, t_snap_km in destinations:
             if nx.has_path(road_graph, s_node, t_node):
                 pre_route_exists = True
-                path_len = nx.shortest_path_length(road_graph, s_node, t_node, weight="weight")
+                graph_len = nx.shortest_path_length(road_graph, s_node, t_node, weight="weight")
+                path_len = graph_len + s_dist + t_snap_km
+                reachable_targets.append((t_node, t_name, t_type, path_len, t_snap_km))
                 if path_len < min_pre_dist:
                     min_pre_dist = path_len
                     best_target_name = t_name
-                    target_node_chosen = t_node
+                    best_target_type = t_type
+                    best_target_snap_km = t_snap_km
 
         if not pre_route_exists:
             counts["UNKNOWN"] += 1
@@ -197,11 +234,14 @@ def analyze_connectivity(
             })
             continue
 
-        # Check post-event route
-        post_route_exists = nx.has_path(post_graph, s_node, target_node_chosen)
-        if post_route_exists:
+        # A settlement remains connected if any previously reachable
+        # destination is still reachable after applying the disruption rule.
+        remaining_targets = [t for t in reachable_targets if nx.has_path(post_graph, s_node, t[0])]
+        if remaining_targets:
             counts["CONNECTED"] += 1
             state = "CONNECTED"
+            chosen = min(remaining_targets, key=lambda t: t[3])
+            best_target_name, best_target_type, best_target_snap_km = chosen[1], chosen[2], chosen[4]
         else:
             counts["CUT_OFF"] += 1
             state = "CUT_OFF"
@@ -212,13 +252,31 @@ def analyze_connectivity(
             "longitude": float(pt.x),
             "latitude": float(pt.y),
             "target": best_target_name,
-            "pre_distance_km": round(min_pre_dist, 2)
+            "target_type": best_target_type,
+            "pre_distance_km": round(min_pre_dist, 2),
+            "settlement_to_road_km": round(float(s_dist), 3),
+            "target_to_road_km": round(float(best_target_snap_km), 3) if best_target_snap_km is not None else None,
+            "reason": (
+                "Mapped road edges crossing the flood-candidate buffer were treated as impassable; "
+                "potential access loss only, closure not confirmed."
+                if state == "CUT_OFF" else
+                "At least one mapped route remains under the road-disruption scenario."
+            )
         })
 
     return {
         "settlement_counts": counts,
         "settlements": detailed,
-        "method": "NetworkX road graph with pre/post flood topology clipping"
+        "method": "NetworkX road graph with flood-candidate edge exclusion scenario",
+        "interpretation": "CUT_OFF is a modelled potential access loss, not a confirmed road closure.",
+        "disruption_assumption": (
+            f"Any mapped road edge intersecting the flood candidate buffered by {disruption_buffer_m:g} m "
+            "is treated as impassable; field verification is required. A remaining route to any mapped "
+            "pre-event hospital/clinic or town is classified CONNECTED."
+        ),
+        "disruption_buffer_m": float(disruption_buffer_m),
+        "max_settlement_snap_km": float(max_settlement_snap_km),
+        "max_destination_snap_km": float(max_destination_snap_km),
     }
 
 
@@ -228,6 +286,7 @@ def main():
     p.add_argument("--roads",       type=Path, default=None,  help="OSM roads GeoJSON")
     p.add_argument("--settlements", type=Path, default=None,  help="OSM settlements GeoJSON")
     p.add_argument("--hospitals",   type=Path, default=None,  help="OSM hospitals GeoJSON")
+    p.add_argument("--towns",       type=Path, default=None,  help="OSM towns/cities GeoJSON")
     p.add_argument("--facts-json",  type=Path, default=None,  help="Existing facts.json to update")
     p.add_argument("--out-json",    type=Path, default=None,  help="Output updated facts.json")
     args = p.parse_args()
@@ -243,7 +302,7 @@ def main():
     geoms = [shape(geom) for geom, val in shapes((mask == 1).astype(np.uint8), mask=(mask == 1), transform=transform) if val == 1]
     flood_union = unary_union(geoms) if geoms else None
 
-    r_json = s_json = h_json = {"features": []}
+    r_json = s_json = h_json = t_json = {"features": []}
     if args.roads and args.roads.exists():
         with open(args.roads, "r", encoding="utf-8") as f:
             r_json = json.load(f)
@@ -253,11 +312,17 @@ def main():
     if args.hospitals and args.hospitals.exists():
         with open(args.hospitals, "r", encoding="utf-8") as f:
             h_json = json.load(f)
+    if args.towns and args.towns.exists():
+        with open(args.towns, "r", encoding="utf-8") as f:
+            t_json = json.load(f)
 
     graph, _ = build_road_graph(r_json)
     print(f"  Road graph constructed: {graph.number_of_nodes()} nodes, {graph.number_of_edges()} edges")
 
-    results = analyze_connectivity(flood_union, graph, s_json.get("features", []), h_json.get("features", []))
+    results = analyze_connectivity(
+        flood_union, graph, s_json.get("features", []), h_json.get("features", []),
+        towns=t_json.get("features", []),
+    )
     counts = results["settlement_counts"]
     print(f"  Settlement status:")
     print(f"    - CONNECTED: {counts['CONNECTED']}")

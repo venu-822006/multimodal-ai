@@ -3,6 +3,10 @@
 Scope: the flood-segmentation AI component in Track B. This is not a claim
 that the full satellite-to-rescue-intelligence system is ready.
 
+For the complete end-to-end checklist, including imagery acquisition, OSM,
+connectivity assumptions, report grounding, and remaining blockers, see
+[HACKATHON_REQUIREMENTS.md](HACKATHON_REQUIREMENTS.md).
+
 ## Requirement check
 
 | Track B AI requirement | Current evidence | Status |

@@ -26,7 +26,7 @@ Usage:
 import argparse
 import json
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -60,7 +60,13 @@ def score_scene_pair(pre_scene: dict, post_scene: dict, flood_date: datetime) ->
     post_dt = datetime.fromisoformat(post_scene["datetime"].replace("Z", "+00:00"))
 
     # Ensure pre is before flood and post is after flood
-    target_dt = flood_date.astimezone(pre_dt.tzinfo) if pre_dt.tzinfo else flood_date
+    target_dt = flood_date
+    if target_dt.tzinfo is None:
+        target_dt = target_dt.replace(tzinfo=timezone.utc)
+    if pre_dt.tzinfo is None:
+        pre_dt = pre_dt.replace(tzinfo=timezone.utc)
+    if post_dt.tzinfo is None:
+        post_dt = post_dt.replace(tzinfo=timezone.utc)
     if pre_dt > target_dt or post_dt < target_dt:
         return 0.0
 
@@ -84,15 +90,22 @@ def search_sentinel_scenes(
     """
     Query STAC catalog for Sentinel-1 scenes and pair them with exact orbit match.
     """
-    flood_date = datetime.strptime(flood_date_str, "%Y-%m-%d")
+    if days_window < 1 or days_window > 90:
+        raise ValueError("days_window must be between 1 and 90 days.")
+    flood_date = datetime.combine(
+        datetime.strptime(flood_date_str, "%Y-%m-%d").date(), time.min, tzinfo=timezone.utc
+    )
     start_date = flood_date - timedelta(days=days_window)
-    end_date = flood_date + timedelta(days=days_window)
+    # STAC datetime intervals are inclusive and the event-day window should
+    # include acquisitions through the end of the final UTC day.
+    end_date = flood_date + timedelta(days=days_window + 1) - timedelta(microseconds=1)
 
     west, south, east, north = bbox
     print(f"  [STAC] Searching Copernicus catalogue for bbox: [{west}, {south}, {east}, {north}]")
     print(f"         Time window: {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
 
     scenes_found = []
+    client = None
     try:
         from pystac_client import Client
         client = Client.open(STAC_API_URL)
@@ -101,7 +114,7 @@ def search_sentinel_scenes(
             bbox=bbox,
             datetime=f"{start_date.isoformat()}Z/{end_date.isoformat()}Z",
             query={"sar:instrument_mode": {"eq": "IW"}},
-            max_items=30
+            max_items=100
         )
         for item in search.items():
             props = item.properties
@@ -123,8 +136,12 @@ def search_sentinel_scenes(
 
     # Pair scenes
     pairs = []
-    pre_scenes = [s for s in scenes_found if datetime.fromisoformat(s["datetime"].replace("Z", "")) < flood_date]
-    post_scenes = [s for s in scenes_found if datetime.fromisoformat(s["datetime"].replace("Z", "")) >= flood_date]
+    def parse_item_time(value: str) -> datetime:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+    pre_scenes = [s for s in scenes_found if parse_item_time(s["datetime"]) < flood_date]
+    post_scenes = [s for s in scenes_found if parse_item_time(s["datetime"]) >= flood_date]
 
     for pre in pre_scenes:
         for post in post_scenes:
@@ -139,12 +156,19 @@ def search_sentinel_scenes(
                 })
 
     # Sort by highest score
-    pairs.sort(key=lambda p: p["pairing_score"], reverse=True)
+    pairs.sort(
+        key=lambda p: (
+            -p["pairing_score"],
+            (parse_item_time(p["post_scene"]["datetime"]) - flood_date).total_seconds(),
+            (flood_date - parse_item_time(p["pre_scene"]["datetime"])).total_seconds(),
+        )
+    )
 
     result = {
         "bbox": bbox,
         "flood_date": flood_date_str,
         "stac_endpoint": STAC_API_URL,
+        "time_window_utc": [start_date.isoformat(), end_date.isoformat()],
         "total_scenes_found": len(scenes_found),
         "valid_same_orbit_pairs": len(pairs),
         "best_pair": pairs[0] if pairs else None,

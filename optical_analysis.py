@@ -10,8 +10,9 @@ Core functionalities:
   1. Computes McFeeters Normalized Difference Water Index (NDWI):
          NDWI = (Green - NIR) / (Green + NIR + 1e-6)
      where Green is Band 3 (560 nm) and NIR is Band 8 (842 nm).
-  2. Cloud & shadow screening:
-     Identifies clouds via high top-of-atmosphere reflectance and screens them out.
+  2. Cloud screening proxy:
+     Uses only supplied Green/NIR reflectance thresholds; this is not a
+     Sentinel-2 Scene Classification Layer cloud/shadow mask.
   3. Optical surface change / sediment detection:
      High reflectance in Green/Red in non-water pixels flags sediment and mud deposits.
   4. Cross-Sensor Radar-Optical Agreement:
@@ -98,7 +99,8 @@ def cross_sensor_validation(
         "radar_only_water_pixels": radar_only_count,
         "optical_only_water_pixels": optical_only_count,
         "cross_sensor_agreement_pct": agreement_pct,
-        "optical_confidence_boost": "HIGH" if agreement_pct >= 60.0 else "MODERATE" if agreement_pct >= 30.0 else "LOW",
+        "agreement_level": "HIGH" if agreement_pct >= 60.0 else "MODERATE" if agreement_pct >= 30.0 else "LOW",
+        "interpretation": "Agreement describes overlap of two thresholded masks; it is not calibrated model confidence.",
     }
 
 
@@ -127,6 +129,12 @@ def process_sentinel2_scene(
 
         def align_band(src):
             source = np.asarray(src.read(1, out_dtype="float32", masked=True).filled(np.nan), dtype=np.float32)
+            scale = float(src.scales[0]) if src.scales and src.scales[0] not in (None, 0) else 1.0
+            offset = float(src.offsets[0]) if src.offsets and src.offsets[0] is not None else 0.0
+            source = source * scale + offset
+            finite = source[np.isfinite(source)]
+            if finite.size and float(np.nanpercentile(finite, 99)) > 2.0:
+                source = source / 10_000.0
             aligned = np.full((height, width), np.nan, dtype=np.float32)
             reproject(
                 source=source,
@@ -160,7 +168,9 @@ def process_sentinel2_scene(
                 )
 
     ndwi = compute_ndwi(green, nir)
-    cloud_mask = ((green > cloud_thresh) & (nir > cloud_thresh)) | ~np.isfinite(green) | ~np.isfinite(nir)
+    valid_optical = np.isfinite(green) & np.isfinite(nir)
+    cloud_candidate = (green > cloud_thresh) & (nir > cloud_thresh) & valid_optical
+    cloud_mask = cloud_candidate | ~valid_optical
 
     out_dir.mkdir(parents=True, exist_ok=True)
     ndwi_tif = out_dir / f"{green_band_path.stem}_ndwi.tif"
@@ -176,8 +186,13 @@ def process_sentinel2_scene(
 
     results = {
         "ndwi_raster": str(ndwi_tif),
-        "mean_ndwi": round(float(np.nanmean(ndwi)), 4),
-        "cloud_fraction": round(float(cloud_mask.mean()), 4),
+        "mean_ndwi": round(float(np.nanmean(ndwi[valid_optical])), 4) if valid_optical.any() else None,
+        "cloud_candidate_fraction_of_valid_pixels": round(
+            float(cloud_candidate.sum() / max(int(valid_optical.sum()), 1)), 4
+        ),
+        "invalid_optical_fraction": round(float((~valid_optical).mean()), 4),
+        "cloud_mask_method": "Green/NIR reflectance threshold proxy; no SCL cloud/shadow band was supplied",
+        "interpretation": "Optical threshold comparison is supporting evidence only and does not calibrate the SAR model.",
     }
 
     if radar_mask is not None:
@@ -201,10 +216,10 @@ def main():
     print("\n  [Sentinel-2 Optical Processing Complete]")
     print(f"    NDWI Raster:    {res['ndwi_raster']}")
     print(f"    Mean NDWI:      {res['mean_ndwi']}")
-    print(f"    Cloud Coverage: {res['cloud_fraction']*100:.1f}%")
+    print(f"    Bright-cloud candidate fraction (valid pixels): {res['cloud_candidate_fraction_of_valid_pixels']*100:.1f}%")
     if "cross_sensor_validation" in res:
         v = res["cross_sensor_validation"]
-        print(f"    Cross-Sensor Agreement: {v['cross_sensor_agreement_pct']}% (Confidence: {v['optical_confidence_boost']})")
+        print(f"    Cross-Sensor Agreement: {v['cross_sensor_agreement_pct']}% (agreement level: {v['agreement_level']}; not calibrated confidence)")
 
 
 if __name__ == "__main__":

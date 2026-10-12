@@ -9,7 +9,7 @@
 [![Tests](https://img.shields.io/badge/Tests-14%2F14%20Passing-brightgreen.svg)](tests/)
 [![License](https://img.shields.io/badge/License-MIT-lightgrey.svg)](LICENSE)
 
-> **Rapid-response spaceborne flood inundation mapping, surface debris candidate detection, topological road network reachability analysis, downstream hydraulic flood-path tracing, and executive situation reporting powered by dual-polarization Sentinel-1 SAR, Copernicus WorldDEM-30, and OpenStreetMap.**
+> **FloodSight AI is a research prototype for Sentinel-1 flood mapping, infrastructure exposure, route scenarios, and situation reports. It is not an operational flood-warning or response system.**
 
 ---
 
@@ -49,17 +49,17 @@
 
 ## 1. Executive Overview
 
-During severe monsoon rainfall and extreme cloudburst events (such as the Trishuli and Bhote Koshi flash floods in the Nepal Himalayas), persistent dense cloud cover, localized precipitation, and steep mountain gorges render optical satellite sensors completely blind. **FloodSight AI** resolves this operational crisis through spaceborne **Synthetic Aperture Radar (SAR)** from the **Sentinel-1** constellation, operating at C-band microwave frequencies (5.405 GHz) to penetrate clouds, monsoon precipitation, smoke, and nighttime darkness.
+Sentinel-1 synthetic aperture radar can provide observations through cloud cover and at night, which is useful during monsoon events. The current FloodSight code is a prototype; its held-out flood scores are weak and do not support stand-alone response decisions.
 
 ### Key Capabilities
-* **All-Weather Dual-Polarization SAR Inundation Mapping:** Ingests Sentinel-1 VV (vertical transmit/receive) and VH (cross-polarization) radar backscatter in decibels ($\text{dB}$) to delineate smooth specular floodwaters.
-* **Custom Neural Network (`FloodUNet`):** A lightweight 1.08M-parameter U-Net trained from scratch without external pre-trained encoders. It consumes dual-polarization SAR backscatter and predicts binary water extent alongside a normalized predictive-entropy raster as an uncalibrated ambiguity indicator for analyst review.
-* **Balanced Optimization & Multi-Process Normalization:** Addresses severe global flood sparsity (~2% flood pixels) using a balanced loss ($w_{\text{flood}} = 6.0\text{--}8.0$) and synchronized per-worker radiometric statistics, eliminating false-alarm saturation on dry mountain slopes.
-* **Multi-Stage Physics Anti-Hallucination:** Eliminates radar shadow and layover false alarms through conservative threshold calibration, temporal backscatter-drop verification ($\Delta\text{dB} \ge 1.5\text{ dB}$), and morphological speckle filtering.
-* **Class B Debris Candidate Detection:** Flags surface roughness increases ($\Delta\text{dB} \ge +2.0\text{ dB}$) in valley corridors as potential debris/mud deposits (experimental, confidence $0.40 - 0.75$).
-* **Topological Road Graph Connectivity Routing:** Builds an OpenStreetMap (OSM) highway network via NetworkX, detects severed roads and bridges, and classifies settlements into `CONNECTED`, `CUT_OFF`, or `UNKNOWN` relative to critical healthcare hubs.
-* **DEM Downstream Flow-Path Tracing:** Computes D8 steepest-descent hydraulic flow vectors over Copernicus WorldDEM-30 to project downriver flood progression corridors and downstream communities at risk.
-* **Actionable Emergency Briefings:** Emits a single-source-of-truth metadata file (`facts.json`), a print-ready 1-page executive HTML situation report (`situation_report.html`), and an interactive Leaflet web dashboard (`dashboard.html`).
+* **Flood segmentation:** The current checkpoint consumes post-event Sentinel-1 VV/VH and predicts water/background plus an uncalibrated entropy layer. Its untouched Himalayan event test is documented in [model readiness](docs/HACKATHON_AI_READINESS.md); the results are not operationally reliable.
+* **Temporal screening:** If a pre-event raster is supplied, the pipeline can use it for heuristic change checks. The clean benchmark checkpoint itself was not trained on paired imagery.
+* **Debris candidates:** A separate heuristic highlights possible surface change; it is not a validated debris classifier.
+* **Asset exposure:** Dated OSM buildings, roads, and bridges intersecting mapped inundation are listed as potentially affected; overlap does not prove physical damage.
+* **Route scenario:** OSM roads are treated as impassable when they intersect the flood candidate plus a 30 m buffer. `CUT_OFF` means no route remains in this scenario to a mapped town or medical facility; it does not confirm a closure.
+* **Terrain screening:** Optional DEM D8 routing draws one terrain-only downslope path. It is not a flood forecast or hydraulic simulation.
+* **Reports and map:** `facts.json`, an HTML situation report, and a Leaflet dashboard summarize computed outputs for human review.
+* **Data ingestion gap:** STAC search discovers candidate scenes but does not download or preprocess Sentinel products. The worker currently requires caller-supplied, aligned analysis-ready VV/VH dB GeoTIFFs. See the full [Track B requirements status](docs/HACKATHON_REQUIREMENTS.md).
 
 ---
 
@@ -203,7 +203,7 @@ FloodSight AI is engineered with modular, production-grade Python libraries, spe
 |:---|:---|:---|
 | **Copernicus Data Space Ecosystem (CDSE)** | STAC API / HTTPS | Discovery of Sentinel-1 C-band SAR GRD scenes and Sentinel-2 L2A optical granules across orbit passes. |
 | **Heidelberg ohsome API** | REST API (`/elements/geometry`) | Extraction of dated, pre-event OpenStreetMap snapshots (buildings, roads, bridges, settlements, healthcare facilities) to prevent post-disaster mapping bias. |
-| **Copernicus WorldDEM-30** | GeoTIFF / Synthetic Fallback | 30-meter spatial elevation model driving slope filtering and D8 steepest-descent flow direction calculations. |
+| **DEM input** | Optional caller-supplied GeoTIFF | Reprojected to the flood-mask grid for terrain-only D8 screening. Source and licence must be verified by the operator; no synthetic DEM is used by the job worker. |
 
 ### 3.5 Visualization, Reporting & Interface
 
@@ -354,13 +354,13 @@ FloodSight AI guarantees normalization parity through:
 
 SAR segmentation in mountainous terrain is vulnerable to false positives caused by radar shadow, layover, and dark tarmac surfaces. FloodSight AI incorporates a multi-tier suppression filter (`predict.py`):
 
-1. **Temperature Scaling:** Default $\tau = 1.0$ preserves calibrated logit distributions:
-   $$p_i = \frac{\exp(z_i / \tau)}{\sum_j \exp(z_j / \tau)}$$
+1. **Logit Temperature:** Inference defaults to $\tau = 1.0$, which leaves logits unchanged; temperature scaling is not calibrated unless separately validated:
+   $$p_i = \operatorname{softmax}(z_i / \tau)$$
 2. **Probability Thresholding:** Uses the threshold calibrated for the selected checkpoint; the clean event-held-out candidate uses $p = 0.49$ from validation Event 1111006. This threshold still yields material false alarms and misses on the untouched test event.
-3. **Temporal Specular Change Verification:** When pre-event SAR imagery is available, pixels must exhibit genuine specular reflection loss:
+3. **Temporal Change Heuristic:** When pre-event SAR is available, a candidate must meet a VV backscatter-drop threshold:
    $$\Delta\text{dB} = \text{dB}_{\text{pre}} - \text{dB}_{\text{post}} \ge 1.5\text{ dB}$$
-   Permanent water bodies, wet paddies, and static mountain shadows ($\Delta\text{dB} \approx 0$) are rejected.
-4. **Morphological Speckle Filter:** Removes isolated radar noise clusters smaller than $15\text{ pixels}$.
+   This heuristic can reject true floods or keep false alarms; it is not proof that a pixel is water.
+4. **Morphological Filter:** Removes small isolated components and fills small holes; this does not remove all speckle or terrain-related errors.
 
 ---
 
@@ -370,7 +370,7 @@ Floods in steep mountain valleys transport boulders, silt, and heavy mud. Rather
 
 $$\Delta\text{dB}_{\text{debris}} = \text{dB}_{\text{post}} - \text{dB}_{\text{pre}} \ge +2.0\text{ dB}$$
 
-When detected inside valley corridors, these are flagged as **Class B: Possible Debris / Surface Change** (experimental, confidence $0.40 - 0.75$) and assigned pixel value `2` in multi-class outputs.
+When the heuristic triggers, these are flagged as **Class B: Possible Debris / Surface Change** (experimental, uncalibrated heuristic score) and assigned pixel value `2` in multi-class outputs. This score is not a probability of debris.
 
 ---
 
@@ -378,24 +378,21 @@ When detected inside valley corridors, these are flagged as **Class B: Possible 
 
 Implemented in `connectivity_analysis.py`, this module models critical infrastructure accessibility:
 
-1. **Graph Construction:** Builds a graph $G = (V, E)$ from OpenStreetMap highway ways (`primary`, `secondary`, `tertiary`, `trunk`).
-2. **Pre-Disaster Baseline:** Computes shortest topological driving paths from each village/town node to the nearest hospital hub via Dijkstra's algorithm.
-3. **Flood Severance:** Intersects the road network with the validated flood polygon (buffered by 15m) and removes severed edges.
-4. **3-State Re-Routing Assessment:**
-   * **`CONNECTED`:** An alternative overland road route to the medical hub remains accessible.
-   * **`CUT_OFF`:** A valid route existed before the flood, but all paths are now severed.
-   * **`UNKNOWN`:** No route existed pre-event, or nodes lacked mapped highway connectivity.
+1. **Graph Construction:** Builds a graph from dated OSM highway ways.
+2. **Pre-Event Baseline:** Finds mapped routes from settlements to hospitals/clinics and towns.
+3. **Disruption Scenario:** Excludes road edges intersecting the mapped flood candidate plus a 30 m ground buffer. This is an explicit assumption, not evidence of impassability.
+4. **3-State Re-Routing Assessment:** `CONNECTED` means a modeled route remains; `CUT_OFF` means none remains under this scenario; `UNKNOWN` means the baseline network or destinations are insufficient. All results need field verification.
 
 ---
 
-### 5.7 Hydrological Downstream Flood-Path Analysis (DEM)
+### 5.7 Terrain-Only Downstream Screening (DEM)
 
 Implemented in `dem_flow_analysis.py`, this module analyzes downstream risks along mountain river corridors:
 
-* **D8 Steepest Descent:** Calculates steepest slope direction from Copernicus WorldDEM-30 elevation grids across 8 adjacent neighbor cells:
+* **D8 Steepest Descent:** Calculates terrain slope direction from a supplied DEM across 8 adjacent neighbor cells:
   $$\text{Slope}_i = \frac{z_{\text{center}} - z_i}{d_i}$$
-* **Downriver Propagation Vectors:** Traces hydraulic flow vectors originating from mapped flood footprints along canyon floors.
-* **Corridor Metrics:** Computes downstream propagation distance ($\text{km}$), total elevation drop ($\text{m}$), and hydraulic gradient ($\text{m/km}$), highlighting communities downstream of active flood surges.
+* **Terrain Screen:** Traces one downslope path from the lowest valid boundary pixel in the flood mask.
+* **Metrics:** Reports geodesic path length and terrain elevation drop/gradient. It does not model water volume, flow direction in a channel, travel time, or downstream flood risk.
 
 ---
 
@@ -405,7 +402,7 @@ Implemented in `optical_analysis.py`, this module supports multi-sensor validati
 
 $$\text{NDWI} = \frac{\rho_{\text{Green}} - \rho_{\text{NIR}}}{\rho_{\text{Green}} + \rho_{\text{NIR}} + 10^{-6}} \quad (\text{Band 3 vs Band 8})$$
 
-* **Cloud Screening:** Excludes optical pixels obscured by clouds using top-of-atmosphere reflectance thresholds.
+* **Cloud Screening:** Uses a reflectance-threshold proxy from the supplied Green/NIR rasters; it is not a Sentinel-2 scene-classification mask and needs review.
 * **Cross-Sensor Agreement:** Classifies pixels into *Confirmed Water* (both SAR and optical agree), *Radar-Only* (detected under clouds/spray), or *Optical-Only* (shallow surface moisture).
 
 ---
@@ -519,9 +516,9 @@ python calibrate_threshold.py --manifest checkpoints/val_manifest.json `
 
 ---
 
-### 7.5 Asynchronous Worker Execution
+### 7.5 Worker Execution with Prepared Scenes
 
-To execute an end-to-end disaster mapping job over Sentinel-1 scenes:
+Run analysis for an AOI/date after supplying preprocessed, aligned two-band Sentinel-1 rasters. STAC search is metadata discovery only; this repository does not automatically download products or preprocess raw GRD.
 
 ```powershell
 python worker.py --bbox 85.1 27.8 85.5 28.1 --flood-date 2026-08-26 `
@@ -531,6 +528,8 @@ python worker.py --bbox 85.1 27.8 85.5 28.1 --flood-date 2026-08-26 `
 ```
 
 *Optional clear-sky Sentinel-2 optical bands:* Add `--s2-green data/scenes/s2_green.tif --s2-nir data/scenes/s2_nir.tif`.
+
+The worker crops the supplied pair to the AOI, then creates predictions and downstream artifacts. Record acquisition dates/orbits and confirm that the rasters are a same-orbit pair before using the run. A discovered STAC pair is not automatically linked to or verified against the supplied files.
 
 ---
 
@@ -723,11 +722,13 @@ python -m pytest -v
 * Satellite imagery alone cannot ascertain structural collapse.
 * In strict compliance with humanitarian and emergency management standards, all outputs, reports, and dashboards strictly use the terminology: **"affected or potentially affected by mapped inundation"**. The word *"destroyed"* is strictly prohibited.
 
-### 11.2 Mandatory Data Attributions
-* **European Space Agency & Copernicus:** *"Contains modified Copernicus Sentinel data [2026]."*
-* **Copernicus Digital Elevation Model:** *"Copernicus WorldDEM-30."*
-* **OpenStreetMap Community:** *"© OpenStreetMap contributors (via ohsome API)."*
-* **KuroSiwo Flood Benchmark:** *"KuroSiwo: A Multimodal SAR Dataset for Flood Inundation Mapping."*
+### 11.2 Data Attributions
+Generated reports use the source attributions recorded in `facts.json`. The
+worker identifies caller-supplied Sentinel rasters as unverified unless their
+provider/product metadata is established. OSM and KuroSiwo citations are added
+for data actually used. A DEM citation is included only when its source is
+verified; do not copy a Copernicus or other provider attribution onto an
+unverified file.
 
 ### 11.3 Prototype Research Notice
 > **Disclaimer:** FloodSight AI is an educational and research prototype. Real-world flood assessment is subject to radar revisit intervals, complex mountainous layover/shadow effects, localized flash flood dynamics, and OpenStreetMap data completeness. This platform must not be used as the sole basis for life-safety emergency rescue operations without field confirmation.

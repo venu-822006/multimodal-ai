@@ -15,8 +15,8 @@ Guarantees:
   - Uses Sentinel-2 only when real bands are explicitly supplied
   - Emits single source of truth facts.json and executive situation report
 
-Note: STAC scene discovery is implemented, but product download and raw GRD
-preprocessing are not. The worker fails clearly when prepared scenes are absent.
+Scene discovery is implemented. The worker accepts caller-supplied, analysis-ready
+Sentinel-1 VV/VH dB GeoTIFFs; it does not download or preprocess raw GRD products.
 """
 
 import argparse
@@ -26,7 +26,7 @@ import math
 import os
 import sys
 import time
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
 from urllib.parse import urlencode
@@ -117,7 +117,7 @@ class JobContext:
 
 
 def acquire_scene_pair(ctx: JobContext, cache_dir: Path) -> tuple[Path, Path]:
-    """Validate caller-supplied scenes or synthesize analysis-ready Sentinel-1 pair."""
+    """Validate and AOI-crop caller-supplied analysis-ready Sentinel-1 scenes."""
     cache_dir.mkdir(parents=True, exist_ok=True)
     if ctx.pre_image and ctx.post_image:
         pre_path, post_path = ctx.pre_image, ctx.post_image
@@ -200,6 +200,72 @@ def acquire_optical_pair(ctx: JobContext, cache_dir: Path) -> tuple[Path, Path] 
     return None
 
 
+def validate_prepared_sar_pair(pre_path: Path, post_path: Path, flood_date: str) -> dict:
+    """Check dB value ranges and compare orbit/date tags when the files carry them."""
+    metadata = []
+    for label, path in (("pre", pre_path), ("post", post_path)):
+        with rasterio.open(path) as src:
+            if src.count < 2:
+                raise ValueError(f"{label}-event Sentinel-1 raster must contain VV and VH bands.")
+            sample_h, sample_w = min(256, src.height), min(256, src.width)
+            sample = src.read(
+                (1, 2), out_shape=(2, sample_h, sample_w), masked=True, out_dtype="float32"
+            )
+            for band_index, band_name in enumerate(("VV", "VH")):
+                values = sample[band_index].compressed()
+                values = values[np.isfinite(values)]
+                if values.size == 0:
+                    raise ValueError(f"{label}-event {band_name} band contains no valid pixels.")
+                plausible = (values >= -60.0) & (values <= 20.0)
+                if float(plausible.mean()) < 0.95:
+                    raise ValueError(
+                        f"{label}-event {band_name} values do not look like decibels; "
+                        "provide calibrated VV/VH dB GeoTIFFs."
+                    )
+            tags = {str(key).lower(): str(value) for key, value in src.tags().items()}
+            metadata.append({
+                "role": label,
+                "filename": path.name,
+                "relative_orbit": next((tags[key] for key in (
+                    "sat:relative_orbit", "s1:relative_orbit_number", "relative_orbit", "relative_orbit_number"
+                ) if key in tags), None),
+                "orbit_direction": next((tags[key] for key in (
+                    "sat:orbit_state", "s1:orbit_direction", "orbit_direction", "direction"
+                ) if key in tags), None),
+                "acquisition_datetime": next((tags[key] for key in (
+                    "datetime", "acquisition_datetime", "start_datetime", "date_acquired"
+                ) if key in tags), None),
+            })
+
+    pre, post = metadata
+    orbit_verified = bool(pre["relative_orbit"] and post["relative_orbit"] and pre["orbit_direction"] and post["orbit_direction"])
+    if orbit_verified and (
+        pre["relative_orbit"] != post["relative_orbit"]
+        or pre["orbit_direction"].lower() != post["orbit_direction"].lower()
+    ):
+        raise ValueError("Pre/post rasters declare different Sentinel-1 relative orbits or flight directions.")
+
+    dates_verified = False
+    if pre["acquisition_datetime"] and post["acquisition_datetime"]:
+        def parse_tag(value):
+            normalized = value.replace("Z", "+00:00")
+            parsed = datetime.fromisoformat(normalized)
+            return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+        pre_dt, post_dt = parse_tag(pre["acquisition_datetime"]), parse_tag(post["acquisition_datetime"])
+        event_dt = datetime.fromisoformat(flood_date).replace(tzinfo=timezone.utc)
+        if pre_dt >= event_dt or post_dt < event_dt or pre_dt >= post_dt:
+            raise ValueError("Raster acquisition tags do not form a valid pre-event/post-event pair for flood_date.")
+        dates_verified = True
+
+    return {
+        "rasters": metadata,
+        "same_orbit_verified_from_tags": orbit_verified,
+        "event_order_verified_from_tags": dates_verified,
+        "operator_must_verify_pair_when_tags_missing": not (orbit_verified and dates_verified),
+    }
+
+
 def _fetch_ohsome_features(bbox: list[float], snapshot_date: str, filter_expr: str, cache_dir: Path) -> dict:
     """Fetch a historical GeoJSON extract from ohsome and cache it by query."""
     query = {"bbox": bbox, "date": snapshot_date, "filter": filter_expr}
@@ -239,8 +305,10 @@ def _fetch_ohsome_features(bbox: list[float], snapshot_date: str, filter_expr: s
             json.dump(data, stream)
         return data
     except Exception as err:
-        print(f"  [OSM Note] ohsome query ({filter_expr[:28]}...) encountered: {err}. Synthetic feature generation disabled.")
-        return {"type": "FeatureCollection", "features": []}
+        raise RuntimeError(
+            f"Could not retrieve the dated pre-event OSM snapshot for '{filter_expr}': {err}. "
+            "The job was stopped so missing infrastructure data is not reported as zero exposure."
+        ) from err
 
 
 def acquire_osm_snapshot(ctx: JobContext, cache_dir: Path) -> dict[str, dict]:
@@ -253,6 +321,7 @@ def acquire_osm_snapshot(ctx: JobContext, cache_dir: Path) -> dict[str, dict]:
         "roads": _fetch_ohsome_features(bbox, snapshot_date, "highway=* and type:way", cache_dir),
         "bridges": _fetch_ohsome_features(bbox, snapshot_date, "bridge=* and type:way", cache_dir),
         "settlements": _fetch_ohsome_features(bbox, snapshot_date, "place=* and type:node", cache_dir),
+        "towns": _fetch_ohsome_features(bbox, snapshot_date, "(place=town or place=city) and type:node", cache_dir),
         "hospitals": _fetch_ohsome_features(bbox, snapshot_date, "amenity=hospital or amenity=clinic", cache_dir),
     }
     data["snapshot_date"] = snapshot_date
@@ -290,21 +359,30 @@ def run_pipeline_worker(ctx: JobContext) -> bool:
         # ─────────────────────────────────────────────────────────────────────
         # 3. DOWNLOADING
         # ─────────────────────────────────────────────────────────────────────
-        ctx.set_state(JobState.DOWNLOADING, "Acquiring georeferenced pre- and post-flood scenes for target coordinates.")
+        ctx.set_state(JobState.DOWNLOADING, "Using caller-supplied analysis-ready scenes; raw satellite product download is not implemented.")
         cache_dir = ctx.out_dir / "scene_cache"
         pre_scene, post_scene = acquire_scene_pair(ctx, cache_dir)
         print(f"  [Worker] Pre-flood scene:  {pre_scene.name}")
         print(f"  [Worker] Post-flood scene: {post_scene.name}")
+        pair_validation = validate_prepared_sar_pair(pre_scene, post_scene, ctx.flood_date)
 
         # ─────────────────────────────────────────────────────────────────────
         # 4. PREPROCESSING
         # ─────────────────────────────────────────────────────────────────────
-        ctx.set_state(JobState.PREPROCESSING, f"Radiometric calibration, dB scaling, and speckle filtering on {post_scene.name}.")
+        pair_tag_status = (
+            "orbit and event-order tags verified"
+            if pair_validation["same_orbit_verified_from_tags"] and pair_validation["event_order_verified_from_tags"]
+            else "orbit/date tags incomplete; operator must verify the supplied pair"
+        )
+        ctx.set_state(
+            JobState.PREPROCESSING,
+            f"Checked VV/VH dB values, CRS, alignment, AOI coverage; {pair_tag_status}.",
+        )
 
         # ─────────────────────────────────────────────────────────────────────
         # 5. FLOOD_MAPPING
         # ─────────────────────────────────────────────────────────────────────
-        ctx.set_state(JobState.FLOOD_MAPPING, "Running log-ratio baseline and U-Net flood model.")
+        ctx.set_state(JobState.FLOOD_MAPPING, "Running U-Net flood inference with available temporal/spatial screening heuristics.")
         from predict import (
             default_checkpoint_path,
             default_confidence_threshold,
@@ -346,6 +424,7 @@ def run_pipeline_worker(ctx: JobContext) -> bool:
         multi_mask_path = ctx.out_dir / f"{post_scene.stem}_multiclass_mask.tif"
         debris_res = run_debris_module(pre_scene, post_scene, flood_mask_path, multi_mask_path)
         facts["debris_detection"] = debris_res
+        facts["debris_detection_status"] = "experimental_surface_change_candidates"
 
         # Pull debris fields to top level of facts for direct situation report rendering
         pixel_area_m2 = facts.get("pixel_area_m2")
@@ -354,7 +433,7 @@ def run_pipeline_worker(ctx: JobContext) -> bool:
             round(float(debris_px * pixel_area_m2 / 1e6), 6)
             if pixel_area_m2 is not None else None
         )
-        facts["debris_confidence"] = debris_res.get("debris_confidence", 0.65)
+        facts["debris_confidence"] = debris_res.get("debris_confidence")
 
         # Cross-Sensor Optical Verification (Sentinel-2 clear-sky NDWI)
         optical_pair = acquire_optical_pair(ctx, cache_dir)
@@ -365,7 +444,7 @@ def run_pipeline_worker(ctx: JobContext) -> bool:
                 green_path, nir_path, flood_mask_path, ctx.out_dir / "optical"
             )
         else:
-            facts["cross_sensor_optical"] = {"status": "not_available", "note": "No real Sentinel-2 bands were supplied."}
+        facts["cross_sensor_optical"] = {"status": "not_available", "note": "No real Sentinel-2 bands were supplied; no optical confirmation was used."}
 
         # ─────────────────────────────────────────────────────────────────────
         # 6. DAMAGE_ANALYSIS
@@ -382,6 +461,7 @@ def run_pipeline_worker(ctx: JobContext) -> bool:
             osm_data["bridges"],
         )
         facts.update(damage)
+        osm_data["potentially_affected_assets"] = damage["potentially_affected_assets"]
         facts["osm_snapshot_date"] = osm_data["snapshot_date"]
         facts["osm_source"] = "ohsome API"
 
@@ -390,10 +470,18 @@ def run_pipeline_worker(ctx: JobContext) -> bool:
         from connectivity_analysis import analyze_connectivity, build_road_graph
         graph, _ = build_road_graph(osm_data["roads"])
         conn_results = analyze_connectivity(
-            flood_poly, graph, osm_data["settlements"]["features"], osm_data["hospitals"]["features"]
+            flood_poly,
+            graph,
+            osm_data["settlements"]["features"],
+            osm_data["hospitals"]["features"],
+            towns=osm_data["towns"]["features"],
         )
         facts["settlement_counts"] = conn_results["settlement_counts"]
         facts["settlements"] = conn_results["settlements"]
+        facts["connectivity_method"] = conn_results["method"]
+        facts["connectivity_interpretation"] = conn_results["interpretation"]
+        facts["road_disruption_assumption"] = conn_results["disruption_assumption"]
+        facts["road_disruption_buffer_m"] = conn_results["disruption_buffer_m"]
 
         # Downstream flood-path analysis using Copernicus DEM (Bonus requirement)
         from dem_flow_analysis import run_dem_flow_analysis, analyze_downstream_exposure
@@ -402,8 +490,30 @@ def run_pipeline_worker(ctx: JobContext) -> bool:
             dem_flow_res.get("flow_path_coords", []),
             osm_data["settlements"].get("features", [])
         )
-        dem_flow_res["downstream_communities_at_risk"] = downstream_exposed
+        dem_flow_res["downstream_communities_near_screening_path"] = downstream_exposed
         facts["dem_flow_analysis"] = dem_flow_res
+        facts["input_provenance"] = {
+            "sentinel1": {
+                "pre_raster": pre_scene.name,
+                "post_raster": post_scene.name,
+                "source": "caller-supplied analysis-ready rasters; upstream provider and product metadata were not independently verified",
+            },
+            "sentinel1_pairing": {
+                "stac_search_status": stac_results.get("status", "SEARCH_ERROR_OR_UNAVAILABLE"),
+                "best_discovered_pair": stac_results.get("best_pair"),
+                "input_files_linked_to_discovered_pair": False,
+                **pair_validation,
+            },
+            "osm": {"provider": "ohsome API", "snapshot_date": osm_data["snapshot_date"]},
+        }
+        attributions = [
+            "Sentinel-1 prepared rasters were caller-supplied; provider, acquisition, and licence metadata were not independently verified.",
+            f"© OpenStreetMap contributors; historical snapshot {osm_data['snapshot_date']}, retrieved via ohsome (ODbL).",
+            "Training dataset: KuroSiwo (Bountos et al., 2024).",
+        ]
+        if dem_flow_res.get("status") not in ("SKIPPED", "NO_FLOOD_PIXELS"):
+            attributions.append("A caller-supplied or locally configured DEM was used; product provenance and licence were not independently verified.")
+        facts["data_attributions"] = attributions
 
         # Write unified facts.json
         with open(ctx.facts_file, "w", encoding="utf-8") as f:
@@ -422,6 +532,7 @@ def run_pipeline_worker(ctx: JobContext) -> bool:
             flood_mask_path,
             ctx.out_dir / "dashboard.html",
             osm_data=osm_data,
+            multiclass_mask_path=multi_mask_path,
         )
 
         # ─────────────────────────────────────────────────────────────────────

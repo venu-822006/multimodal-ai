@@ -7,21 +7,32 @@ This document provides the programmatic specification for backend and frontend e
 ## 1. CLI Execution Reference
 
 ### Job Worker (prepared-scene workflow)
-Runs flood inference, historical OSM impact analysis, and report generation when
-real analysis-ready Sentinel-1 scenes are provided:
+Runs flood inference, historical OSM exposure/connectivity analysis, and report
+generation when real analysis-ready Sentinel-1 scenes are provided:
 ```bash
 python worker.py \
     --bbox 85.1 27.8 85.5 28.1 \
     --flood-date 2024-09-28 \
+    --pre-image data/scenes/pre_event_vv_vh_db.tif \
+    --post-image data/scenes/post_event_vv_vh_db.tif \
     --job-id job_101 \
     --out-dir outputs/job_101
 ```
 
-`stac_search.py` discovers scene metadata, but does not download products.
-`worker.py` does not yet preprocess raw GRD products; it requires aligned,
-two-band VV/VH dB GeoTIFFs in EPSG:4326. A run without real scene files fails
-instead of substituting simulated observations. Sentinel-2 analysis is optional
-and requires real `--s2-green` and `--s2-nir` rasters.
+Both rasters must be real, preprocessed two-band VV/VH dB GeoTIFFs in EPSG:4326,
+with matching grids and full AOI coverage. The operator must verify their event
+dates and same-orbit relationship. `stac_search.py` discovers candidate metadata;
+it does not download products or verify that the supplied files match its result.
+Raw GRD preprocessing and automatic Sentinel-1/Sentinel-2 acquisition are not
+implemented. Missing Sentinel files fail the job instead of substituting
+simulated observations. Sentinel-2 is optional and requires real `--s2-green` and
+`--s2-nir` rasters; its cloud screen is only a reflectance proxy.
+
+The connectivity result is a scenario: any mapped road edge intersecting the
+flood candidate plus a 30 m buffer is treated as impassable. `CUT_OFF` means no
+mapped route remains to any mapped town or medical facility under that assumption;
+it is not a confirmed road closure. The optional DEM path is terrain-only, not a
+flood forecast. See [the full Track B checklist](HACKATHON_REQUIREMENTS.md).
 
 ### Standalone Inference
 ```bash
@@ -42,8 +53,8 @@ Jobs transition through the following states, logged in `status.json` and `job.l
 | `QUEUED` | Job created and registered. |
 | `VALIDATING` | Coordinate validity checked (`-180 <= lon <= 180`, `-90 <= lat <= 90`, `west < east`, `south < north`). |
 | `SEARCHING_DATA` | STAC Copernicus query for matching Sentinel-1 same-orbit pairs. |
-| `DOWNLOADING` | Validating the caller-supplied Sentinel-1 pair (automatic download is not implemented). |
-| `PREPROCESSING` | Using caller-supplied analysis-ready VV/VH dB rasters (raw preprocessing is not implemented in the worker). |
+| `DOWNLOADING` | Validating caller-supplied Sentinel-1 rasters (automatic download is not implemented). |
+| `PREPROCESSING` | Checking that rasters are analysis-ready, aligned VV/VH dB inputs (raw preprocessing is not implemented). |
 | `FLOOD_MAPPING` | Dual-pol U-Net inference + anti-hallucination spatial filtering. |
 | `DAMAGE_ANALYSIS` | OSM building, road, and bridge exposure overlay. |
 | `CONNECTIVITY_ANALYSIS` | NetworkX road graph 3-state cut-off routing. |
