@@ -1,0 +1,86 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# C extensions
+*.obj
+*.o
+*.pyd
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Testing & Cache
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Heavy Geospatial Rasters & Datasets (Multi-GB files exceeding GitHub limits)
+*.tif
+*.tiff
+*.geotiff
+*.nc
+*.hdf
+*.tar.gz
+*.zip
+*.7z
+*.rar
+
+data/raw/
+data/processed/
+data/terrain/
+data/cache/
+data/osm/cache/
+scene_cache/
+outputs/**/scene_cache/
+outputs/**/*.tif
+outputs/**/*.tiff
+outputs/held_out_eval/*_facts.json
+outputs/held_out_eval/*_flood_predicted.tif
+outputs/himalayan_eval/*_facts.json
+outputs/himalayan_eval/*_flood_predicted.tif
+outputs/current_heldout_eval/
+outputs/**/osm_cache/
+checkpoints/*_previous_*.csv
+
+# Large Model Checkpoints & Weights
+*.pt
+*.pth
+*.onnx
+*.bin
+*.ckpt
+checkpoints/archive_old/
+checkpoints/*.pt
+!checkpoints/best.pt
+checkpoints/*.pth
+
+# OS & Editor specific
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs & temp files
+*.log
+*.tmp
+job.log
+outputs/test_*/
+outputs/ready_*/
+outputs/uncertainty_smoke/
+outputs/default_model_smoke/
+outputs/hackathon_holdout_*/
+checkpoints/ready_run/

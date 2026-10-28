@@ -1,0 +1,104 @@
+{
+  "artifact": {
+    "file": "best.pt",
+    "size_bytes": 13109130,
+    "sha256": "6A13D85E0647F06B4264659EDE05D3F4698100F5A7BC294C5F3AA836816D2252",
+    "selected_epoch": 2
+  },
+  "model_config": {
+    "architecture": "FloodSight compact U-Net",
+    "in_channels": 2,
+    "class_count": 2,
+    "base_channels": 24,
+    "patch_size": 224
+  },
+  "input_contract": {
+    "channels": [
+      "VV",
+      "VH"
+    ],
+    "units": "dB",
+    "temporal_input": "post-event only",
+    "preprocessing": "Clip each channel to mean +/- 3 standard deviations, then z-score with std + 1e-6.",
+    "normalization_mean_db": [
+      -9.838550567626953,
+      -15.333531379699707
+    ],
+    "normalization_std_db": [
+      3.29131817817688,
+      3.852419376708984
+    ]
+  },
+  "inference_threshold": {
+    "value": 0.49,
+    "selected_on_validation_event": "1111006",
+    "selection_metric": "pooled_validation_f1"
+  },
+  "training_config": {
+    "learning_rate": 0.0003,
+    "flood_weight": 8.0,
+    "batch_size": 4,
+    "patience": 8,
+    "samples_per_image": 1,
+    "event_balanced_sampling": true
+  },
+  "split": {
+    "train": {
+      "event_ids": [
+        "1111002",
+        "1111003",
+        "1111004"
+      ],
+      "scenes": 5054
+    },
+    "validation": {
+      "event_ids": [
+        "1111006"
+      ],
+      "scenes": 685
+    },
+    "test": {
+      "event_ids": [
+        "1111005"
+      ],
+      "scenes": 1369
+    }
+  },
+  "validation_at_selected_threshold": {
+    "threshold": 0.49,
+    "iou": 0.3895930409080506,
+    "f1": 0.5607296948658654,
+    "precision": 0.4447576435920118,
+    "recall": 0.7585150432604184,
+    "valid_pixels": 33527330
+  },
+  "training_history_best_epoch_validation": {
+    "epoch": 2,
+    "flood_iou": 0.389418,
+    "f1": 0.560548,
+    "precision": 0.450655,
+    "recall": 0.74132,
+    "pixel_accuracy": 0.949973
+  },
+  "held_out_test_metrics": {
+    "threshold": 0.49,
+    "all_scene_macro": {
+      "iou": 0.1394954711468225,
+      "f1": 0.15420489408327245,
+      "precision": 0.16897976625273922,
+      "recall": 0.15801482834185535,
+      "pixel_accuracy": 0.9484623813002192
+    },
+    "pixel_pooled": {
+      "iou": 0.28576452089157955,
+      "f1": 0.4445052204324688,
+      "precision": 0.33281312375513306,
+      "recall": 0.6690325786409491,
+      "pixel_accuracy": 0.9484613139106081
+    },
+    "positive_scenes": 179,
+    "zero_flood_scenes": 1190,
+    "zero_flood_scenes_without_false_positives": 123
+  },
+  "caveat": "Research prototype only. Pixel accuracy is background-dominated; test metrics show substantial errors and do not establish operational reliability."
+}
