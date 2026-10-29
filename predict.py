@@ -44,6 +44,8 @@ Usage:
         --out-dir   outputs/batch_run
 """
 
+from __future__ import annotations
+
 import argparse
 import hashlib
 import json
@@ -62,13 +64,25 @@ import rasterio
 from rasterio.transform import Affine
 from rasterio.transform import array_bounds
 from rasterio.warp import transform as warp_transform, transform_bounds
-import torch
 import warnings
 from skimage.morphology import remove_small_holes, remove_small_objects
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 
-from model import create_unet_model
+try:
+    import torch
+    from model import create_unet_model
+    _HAS_TORCH = True
+except ImportError:
+    class _DummyTorch:
+        @staticmethod
+        def no_grad():
+            def decorator(fn):
+                return fn
+            return decorator
+    torch = _DummyTorch()
+    create_unet_model = None
+    _HAS_TORCH = False
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -278,6 +292,13 @@ def predict_scene(
 # ---------------------------------------------------------------------------
 # Anti-Hallucination & False Positive Reduction Pipeline
 # ---------------------------------------------------------------------------
+
+def compute_slope_from_dem(dem: np.ndarray, cell_size_m: float = 30.0) -> np.ndarray:
+    """Calculate topographic slope in degrees using 2D gradient on DEM elevation."""
+    dy, dx = np.gradient(dem.astype(np.float32), cell_size_m, cell_size_m)
+    slope_rad = np.arctan(np.sqrt(dx**2 + dy**2))
+    return np.degrees(slope_rad).astype(np.float32)
+
 def apply_anti_hallucination_filters(
     prob_map: np.ndarray,
     confidence_thresh: float = 0.55,
@@ -443,6 +464,8 @@ def predict_one(
     min_cluster_px: int = 0,
     pre_scene_path: Path | None = None,
     save_probability: bool = False,
+    dem_path: Path | None = None,
+    slope: np.ndarray | None = None,
 ) -> dict:
     print(f"\n  [>] Scene: {scene_path.name}")
 
@@ -486,6 +509,17 @@ def predict_one(
     if pad_h or pad_w:
         model_image = np.pad(model_image, ((0, pad_h), (0, pad_w), (0, 0)), mode="edge")
 
+    if slope is None and dem_path is not None:
+        dem_file = Path(dem_path)
+        if dem_file.is_file():
+            try:
+                with rasterio.open(dem_file) as dem_src:
+                    dem_data = dem_src.read(1, out_shape=(H, W), resampling=rasterio.enums.Resampling.bilinear)
+                    slope = compute_slope_from_dem(dem_data, cell_size_m=30.0)
+                    print(f"    [Topography] Derived slope from DEM (max: {float(np.max(slope)):.1f} deg, mean: {float(np.mean(slope)):.1f} deg)")
+            except Exception as e:
+                print(f"    [Notice] Could not derive slope from DEM {dem_file}: {e}")
+
     norm_image = normalize_scene(model_image, sar_mean, sar_std)
 
     # -- Inference --
@@ -500,6 +534,7 @@ def predict_one(
         prob_map=prob_map,
         confidence_thresh=confidence_threshold,
         min_cluster_px=min_cluster_px,
+        slope=slope,
         pre_image=pre_image,
         post_image=post_image if pre_image is not None else None,
     )
@@ -612,6 +647,8 @@ def predict_one(
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--scene",       type=Path, help="Single scene GeoTIFF to predict on")
+    p.add_argument("--dem",         type=Path, default=None,
+                   help="Copernicus WorldDEM-30 GeoTIFF for topographic slope anti-hallucination")
     p.add_argument("--pre-scene",   type=Path,
                    help="Pre-event 2-band VV/VH GeoTIFF paired with --scene for a 4-channel checkpoint")
     p.add_argument("--scene-dir",   type=Path, help="Directory of scene GeoTIFFs (batch predict)")
@@ -709,6 +746,7 @@ def main():
             min_cluster_px=args.min_cluster_px,
             pre_scene_path=pre_scene_path,
             save_probability=args.save_probability,
+            dem_path=args.dem,
         )
         all_facts.append(facts)
 

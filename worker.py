@@ -167,16 +167,37 @@ def acquire_scene_pair(ctx: JobContext, cache_dir: Path) -> tuple[Path, Path]:
                 cropped.append(out_path)
         return cropped[0], cropped[1]
 
-    # Re-use cached scene pair for this job_id if present
-    pre_path = cache_dir / f"{ctx.job_id}_pre.tif"
-    post_path = cache_dir / f"{ctx.job_id}_post.tif"
-    if pre_path.exists() and post_path.exists():
-        return pre_path, post_path
-    raise FileNotFoundError(
-        f"Real Sentinel-1 imagery not provided for target bounding box {ctx.bbox} and flood date {ctx.flood_date}. "
-        "Supply real Sentinel-1 dual-pol (VV/VH dB) GeoTIFFs via --post-image (and optional --pre-image). "
-        "Synthetic demo data generation has been disabled per challenge rules."
-    )
+    # Re-use cached scene pair if present
+    for pre_c, post_c in [
+        (cache_dir / f"{ctx.job_id}_pre.tif", cache_dir / f"{ctx.job_id}_post.tif"),
+        (cache_dir / "pre_event.tif", cache_dir / "post_event.tif"),
+    ]:
+        if pre_c.exists() and post_c.exists():
+            return pre_c, post_c
+
+    # Automatically discover, download, and preprocess Sentinel imagery from Planetary Computer STAC
+    print(f"  [Worker] Auto-downloading Sentinel scenes via Planetary Computer STAC for bbox {ctx.bbox}...")
+    try:
+        from download_scenes import discover_and_download
+        manifest = discover_and_download(
+            bbox=ctx.bbox,
+            flood_date=ctx.flood_date,
+            out_dir=cache_dir,
+            download_optical=True,
+        )
+        pre_dl = Path(manifest["pre_event"]["file"])
+        post_dl = Path(manifest["post_event"]["file"])
+        if manifest.get("optical") and not ctx.s2_green and not ctx.s2_nir:
+            ctx.s2_green = Path(manifest["optical"]["green_file"])
+            ctx.s2_nir = Path(manifest["optical"]["nir_file"])
+        if manifest.get("dem") and not ctx.dem_file:
+            ctx.dem_file = Path(manifest["dem"]["dem_file"])
+        return pre_dl, post_dl
+    except Exception as exc:
+        raise RuntimeError(
+            f"Automated satellite acquisition from Planetary Computer STAC failed: {exc}. "
+            "Verify network access or supply analysis-ready Sentinel-1 GeoTIFFs via --post-image/--pre-image."
+        ) from exc
 
 
 def acquire_optical_pair(ctx: JobContext, cache_dir: Path) -> tuple[Path, Path] | None:
@@ -189,10 +210,13 @@ def acquire_optical_pair(ctx: JobContext, cache_dir: Path) -> tuple[Path, Path] 
     if (ctx.s2_green and not ctx.s2_nir) or (ctx.s2_nir and not ctx.s2_green):
         raise ValueError("Provide both --s2-green and --s2-nir, or neither.")
 
-    green_path = cache_dir / f"{ctx.job_id}_s2_b03_green.tif"
-    nir_path = cache_dir / f"{ctx.job_id}_s2_b08_nir.tif"
-    if green_path.exists() and nir_path.exists():
-        return green_path, nir_path
+    for g_path, n_path in [
+        (cache_dir / f"{ctx.job_id}_s2_b03_green.tif", cache_dir / f"{ctx.job_id}_s2_b08_nir.tif"),
+        (cache_dir / "s2_green.tif", cache_dir / "s2_nir.tif"),
+        (cache_dir / "s2_b03_green.tif", cache_dir / "s2_b08_nir.tif"),
+    ]:
+        if g_path.exists() and n_path.exists():
+            return g_path, n_path
 
     return None
 
@@ -434,6 +458,9 @@ def run_pipeline_worker(ctx: JobContext) -> bool:
             raise ValueError("FLOODSIGHT_THRESHOLD must be between 0 and 1.")
 
         model, mean, std, p_size, ckpt = load_checkpoint(ckpt_path, device)
+        if ctx.dem_file is None and (cache_dir / "dem_30m.tif").exists():
+            ctx.dem_file = cache_dir / "dem_30m.tif"
+
         facts = predict_one(
             scene_path=post_scene,
             model=model,
@@ -448,14 +475,25 @@ def run_pipeline_worker(ctx: JobContext) -> bool:
             temperature=1.0,
             confidence_threshold=confidence_threshold,
             pre_scene_path=pre_scene,
+            dem_path=ctx.dem_file,
         )
 
         flood_mask_path = ctx.out_dir / f"{post_scene.stem}_flood_predicted.tif"
 
-        # Run Debris Module on distinct pre and post scenes
+        # Check for optical bands (Sentinel-2 B03 and B08)
+        optical_pair = acquire_optical_pair(ctx, cache_dir)
+        opt_green = optical_pair[0] if optical_pair else None
+        opt_nir = optical_pair[1] if optical_pair else None
+
+        # Run Multi-Modal Debris Module
         from debris import run_debris_module
         multi_mask_path = ctx.out_dir / f"{post_scene.stem}_multiclass_mask.tif"
-        debris_res = run_debris_module(pre_scene, post_scene, flood_mask_path, multi_mask_path)
+        debris_res = run_debris_module(
+            pre_scene, post_scene, flood_mask_path, multi_mask_path,
+            slope_path=ctx.dem_file,
+            s2_green_path=opt_green,
+            s2_nir_path=opt_nir,
+        )
         facts["debris_detection"] = debris_res
         facts["debris_detection_status"] = "experimental_surface_change_candidates"
 
@@ -469,7 +507,6 @@ def run_pipeline_worker(ctx: JobContext) -> bool:
         facts["debris_heuristic_score"] = debris_res.get("debris_heuristic_score")
 
         # Cross-Sensor Optical Verification (Sentinel-2 clear-sky NDWI)
-        optical_pair = acquire_optical_pair(ctx, cache_dir)
         if optical_pair:
             from optical_analysis import process_sentinel2_scene
             green_path, nir_path = optical_pair

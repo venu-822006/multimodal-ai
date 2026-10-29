@@ -47,7 +47,7 @@ def linear_to_db(data: np.ndarray, eps: float = 1e-10) -> np.ndarray:
     """
     Convert Sentinel-1 raw amplitude (or power) values to decibels.
     Adds epsilon to avoid log(0).
-    
+
     Args:
         data: 2D float array (H, W) of linear amplitude values.
         eps: Small constant to prevent log(0).
@@ -118,7 +118,7 @@ def reproject_to_wgs84(
     """
     height, width = data.shape
     dst_transform, dst_width, dst_height = calculate_default_transform(
-        src_crs, target_crs, width, height, 
+        src_crs, target_crs, width, height,
     )
     dst_data = np.empty((dst_height, dst_width), dtype=np.float32)
 
@@ -219,7 +219,7 @@ def write_mask_geotiff(mask: np.ndarray, out_path: str, transform, crs):
         compress="lzw",
     ) as dst:
         dst.write(mask.astype(np.uint8), 1)
-    
+
     print(f"  ✓ Wrote mask:        {out_path}  [{h}×{w}]")
 
 

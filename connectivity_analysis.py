@@ -1,39 +1,19 @@
 """
-connectivity_analysis.py  —  FloodSight AI | Road Graph & Cut-off Analysis
-===========================================================================
-Implements Step 8 & Gap 3: Road Graph + Cut-off Analysis according to the
-FloodSight architecture rules:
-
-  Rule & States:
-    1. Build pre-event road graph via NetworkX from OSM road segments.
-    2. For each settlement (village/town), find road route to nearest hospital
-       (or nearest town if no hospital exists).
-    3. Remove roads and bridges that intersect the flood mask (with a buffer).
-    4. Re-test the route:
-       - CONNECTED: A route still exists after removing flooded roads.
-       - CUT_OFF:   No route remains under the explicit road-disruption scenario.
-       - UNKNOWN:   No baseline route or usable road/destination was mapped.
-
-  Output:
-    Updates facts.json with:
-    {
-      "settlement_counts": {
-        "CONNECTED": int,
-        "CUT_OFF": int,
-        "UNKNOWN": int
-      },
-      "settlements": [
-        {"name": str, "state": "CONNECTED"|"CUT_OFF"|"UNKNOWN", "target": str, "pre_distance_km": float}
-      ]
-    }
-
-Usage:
-    python connectivity_analysis.py \
-        --flood-mask   outputs/event_001_flood_predicted.tif \
-        --roads        data/osm/roads.geojson \
-        --settlements  data/osm/settlements.geojson \
-        --hospitals    data/osm/hospitals.geojson \
-        --facts-json   outputs/event_001_facts.json
+connectivity_analysis.py  -  FloodSight AI | Road Graph & Risk-Stratified Cut-off Analysis
+========================================================================================
+Implements Step 8 & Gap 3: Road Graph + Risk-Stratified Accessibility Analysis:
+  1. Builds pre-event road network graph from OSM road geometries.
+  2. For each settlement (village/town), calculates shortest road route to nearest hospital
+     or administrative town center.
+  3. Applies flood disruption model: removes road segments intersecting the flood candidate
+     (buffered by disruption_buffer_m).
+  4. Evaluates accessibility and risk stratification:
+       - CONNECTED: Direct route remains unimpaired.
+       - FUNCTIONAL_DETOUR: Primary route is severed, but alternative detour path exists.
+         Calculates additional detour distance (km) and penalty percentage.
+       - CRITICAL_ISOLATED (CUT_OFF): Zero alternative routes remain to any mapped facility.
+         Flagged as Priority 1 for emergency evacuation / relief airlift.
+       - UNKNOWN: Settlement was isolated or unmapped even pre-event.
 """
 
 import argparse
@@ -117,7 +97,7 @@ def find_nearest_node(graph: nx.Graph, point: Point) -> tuple[tuple, float]:
 
 
 def _buffer_flood_in_metres(flood_polygon, buffer_m: float):
-    """Buffer an EPSG:4326 flood candidate by a ground distance, not degrees."""
+    """Buffer an EPSG:4326 flood candidate by a ground distance in metres."""
     if flood_polygon is None or flood_polygon.is_empty or buffer_m <= 0:
         return flood_polygon
     center = flood_polygon.centroid
@@ -141,16 +121,23 @@ def analyze_connectivity(
     max_destination_snap_km: float = 2.0,
 ) -> dict:
     """
-    Run 3-state connectivity classification:
-      - CONNECTED
-      - CUT_OFF (modelled potential loss, not confirmed closure)
-      - UNKNOWN
+    Run risk-stratified connectivity and detour analysis:
+      - CONNECTED (direct unimpaired access)
+      - FUNCTIONAL_DETOUR (route available via alternative path)
+      - CRITICAL_ISOLATED / CUT_OFF (zero remaining routes)
+      - UNKNOWN (unmapped / disconnected baseline)
     """
-    counts = {"CONNECTED": 0, "CUT_OFF": 0, "UNKNOWN": 0}
+    counts = {
+        "CONNECTED": 0,
+        "FUNCTIONAL_DETOUR": 0,
+        "CRITICAL_ISOLATED": 0,
+        "CUT_OFF": 0,
+        "UNKNOWN": 0,
+    }
     detailed = []
+    detour_additions = []
 
-    # This is a scenario assumption, not evidence that a road is physically
-    # impassable: any edge intersecting this buffered candidate is excluded.
+    # Scenario assumption: road edges intersecting the buffered candidate are excluded.
     post_graph = road_graph.copy()
     if flood_polygon is not None and not flood_polygon.is_empty:
         flood_buffered = _buffer_flood_in_metres(flood_polygon, disruption_buffer_m)
@@ -161,7 +148,7 @@ def analyze_connectivity(
                 edges_to_remove.append((u, v))
         post_graph.remove_edges_from(edges_to_remove)
 
-    # Medical facilities and mapped towns are possible destinations.
+    # Medical facilities and mapped towns as possible destinations.
     target_nodes = []
     for h in hospitals:
         geom = shape(h["geometry"])
@@ -191,25 +178,22 @@ def analyze_connectivity(
             if not (t[2] == "town" and str(t[1]).strip().casefold() == str(s_name).strip().casefold())
         ]
 
-        # If village is isolated or road unmapped pre-event -> UNKNOWN
         if s_node is None or s_dist > max_settlement_snap_km or not destinations:
             counts["UNKNOWN"] += 1
             detailed.append({
                 "settlement": s_name,
                 "state": "UNKNOWN",
+                "substate": "UNMAPPED_BASELINE",
+                "triage_priority": "UNASSESSED",
                 "longitude": float(pt.x),
                 "latitude": float(pt.y),
                 "reason": "No usable road or mapped town/medical destination in the pre-event snapshot"
             })
             continue
 
-        # Check pre-event route
+        # Pre-event route
         pre_route_exists = False
-        best_target_name = "None"
-        best_target_type = None
-        min_pre_dist = float("inf")
         reachable_targets = []
-        best_target_snap_km = None
 
         for t_node, t_name, t_type, t_snap_km in destinations:
             if nx.has_path(road_graph, s_node, t_node):
@@ -217,62 +201,110 @@ def analyze_connectivity(
                 graph_len = nx.shortest_path_length(road_graph, s_node, t_node, weight="weight")
                 path_len = graph_len + s_dist + t_snap_km
                 reachable_targets.append((t_node, t_name, t_type, path_len, t_snap_km))
-                if path_len < min_pre_dist:
-                    min_pre_dist = path_len
-                    best_target_name = t_name
-                    best_target_type = t_type
-                    best_target_snap_km = t_snap_km
 
         if not pre_route_exists:
             counts["UNKNOWN"] += 1
             detailed.append({
                 "settlement": s_name,
                 "state": "UNKNOWN",
+                "substate": "UNREACHABLE_PRE_EVENT",
+                "triage_priority": "UNASSESSED",
                 "longitude": float(pt.x),
                 "latitude": float(pt.y),
                 "reason": "No route existed even pre-event"
             })
             continue
 
-        # A settlement remains connected if any previously reachable
-        # destination is still reachable after applying the disruption rule.
-        remaining_targets = [t for t in reachable_targets if nx.has_path(post_graph, s_node, t[0])]
+        best_pre_target = min(reachable_targets, key=lambda t: t[3])
+        min_pre_dist = best_pre_target[3]
+
+        # Post-event routing
+        remaining_targets = []
+        for t_node, t_name, t_type, orig_len, t_snap_km in reachable_targets:
+            if nx.has_path(post_graph, s_node, t_node):
+                post_graph_len = nx.shortest_path_length(post_graph, s_node, t_node, weight="weight")
+                post_path_len = post_graph_len + s_dist + t_snap_km
+                remaining_targets.append((t_node, t_name, t_type, post_path_len, t_snap_km, orig_len))
+
         if remaining_targets:
-            counts["CONNECTED"] += 1
-            state = "CONNECTED"
             chosen = min(remaining_targets, key=lambda t: t[3])
-            best_target_name, best_target_type, best_target_snap_km = chosen[1], chosen[2], chosen[4]
+            best_target_name, best_target_type = chosen[1], chosen[2]
+            best_target_snap_km = chosen[4]
+            post_distance_km = round(chosen[3], 2)
+            orig_distance_km = round(chosen[5], 2)
+            detour_additional_km = max(0.0, round(post_distance_km - orig_distance_km, 2))
+            detour_penalty_pct = round(100.0 * detour_additional_km / max(orig_distance_km, 0.001), 1)
+
+            if detour_additional_km >= 0.5:
+                state = "FUNCTIONAL_DETOUR"
+                counts["FUNCTIONAL_DETOUR"] += 1
+                counts["CONNECTED"] += 1
+                triage_priority = "PRIORITY_2_DETOUR_ALERT"
+                detour_additions.append(detour_additional_km)
+                reason = (
+                    f"Primary route disrupted by inundation barrier; detour path available "
+                    f"(+{detour_additional_km} km / +{detour_penalty_pct}% distance penalty)."
+                )
+            else:
+                state = "CONNECTED"
+                counts["CONNECTED"] += 1
+                triage_priority = "PRIORITY_3_NORMAL"
+                reason = "Direct mapped route remains unimpaired under the road-disruption scenario."
         else:
-            counts["CUT_OFF"] += 1
             state = "CUT_OFF"
+            counts["CUT_OFF"] += 1
+            counts["CRITICAL_ISOLATED"] += 1
+            best_target_name = best_pre_target[1]
+            best_target_type = best_pre_target[2]
+            best_target_snap_km = best_pre_target[4]
+            post_distance_km = None
+            detour_additional_km = None
+            detour_penalty_pct = None
+            triage_priority = "PRIORITY_1_CRITICAL_ISOLATION"
+            reason = (
+                "All mapped road routes to emergency medical facilities and town centers are blocked "
+                "by modeled flood inundation. Immediate relief/boat/airlift required."
+            )
 
         detailed.append({
             "settlement": s_name,
             "state": state,
+            "substate": "CRITICAL_ISOLATED" if state == "CUT_OFF" else state,
+            "triage_priority": triage_priority,
             "longitude": float(pt.x),
             "latitude": float(pt.y),
             "target": best_target_name,
             "target_type": best_target_type,
             "pre_distance_km": round(min_pre_dist, 2),
+            "post_distance_km": post_distance_km,
+            "detour_additional_km": detour_additional_km,
+            "detour_penalty_pct": detour_penalty_pct,
             "settlement_to_road_km": round(float(s_dist), 3),
             "target_to_road_km": round(float(best_target_snap_km), 3) if best_target_snap_km is not None else None,
-            "reason": (
-                "Mapped road edges crossing the flood-candidate buffer were treated as impassable; "
-                "potential access loss only, closure not confirmed."
-                if state == "CUT_OFF" else
-                "At least one mapped route remains under the road-disruption scenario."
-            )
+            "reason": reason,
         })
+
+    detour_metrics = {
+        "settlements_requiring_detour": len(detour_additions),
+        "max_detour_km": round(float(max(detour_additions)), 2) if detour_additions else 0.0,
+        "mean_detour_km": round(float(np.mean(detour_additions)), 2) if detour_additions else 0.0,
+        "critical_isolation_count": counts["CRITICAL_ISOLATED"],
+    }
 
     return {
         "settlement_counts": counts,
+        "detour_metrics": detour_metrics,
         "settlements": detailed,
-        "method": "NetworkX road graph with flood-candidate edge exclusion scenario",
-        "interpretation": "CUT_OFF is a modelled potential access loss, not a confirmed road closure.",
+        "method": "NetworkX road graph with flood-candidate edge exclusion & detour penalty quantification",
+        "interpretation": "CUT_OFF / CRITICAL_ISOLATED denotes simulated loss of road route to any mapped destination under assumed impassability.",
+        "disclaimer": (
+            "Modeled routing accessibility under the assumption that all flooded road edges are impassable. "
+            "This constitutes an emergency response planning scenario and does not verify physical structural bridge "
+            "destruction without high-resolution field or aerial validation."
+        ),
         "disruption_assumption": (
             f"Any mapped road edge intersecting the flood candidate buffered by {disruption_buffer_m:g} m "
-            "is treated as impassable; field verification is required. A remaining route to any mapped "
-            "pre-event hospital/clinic or town is classified CONNECTED."
+            "is treated as impassable. Routes requiring detours >= 0.5 km are classified FUNCTIONAL_DETOUR."
         ),
         "disruption_buffer_m": float(disruption_buffer_m),
         "max_settlement_snap_km": float(max_settlement_snap_km),
@@ -292,7 +324,7 @@ def main():
     args = p.parse_args()
 
     print("=" * 65)
-    print(" FloodSight AI — Step 8: Road Graph & Cut-off Analysis (Gap 3)")
+    print(" FloodSight AI - Step 8: Road Graph & Risk-Stratified Cut-off Analysis")
     print("=" * 65)
 
     with rasterio.open(args.flood_mask) as src:
@@ -324,20 +356,24 @@ def main():
         towns=t_json.get("features", []),
     )
     counts = results["settlement_counts"]
-    print(f"  Settlement status:")
-    print(f"    - CONNECTED: {counts['CONNECTED']}")
-    print(f"    - CUT_OFF:   {counts['CUT_OFF']}")
-    print(f"    - UNKNOWN:   {counts['UNKNOWN']}")
+    detours = results["detour_metrics"]
+    print("  Settlement status:")
+    print(f"    - CONNECTED:         {counts['CONNECTED']} (Unimpaired: {counts['CONNECTED'] - counts['FUNCTIONAL_DETOUR']})")
+    print(f"    - FUNCTIONAL_DETOUR: {counts['FUNCTIONAL_DETOUR']} (Max detour: {detours['max_detour_km']} km)")
+    print(f"    - CRITICAL_ISOLATED: {counts['CRITICAL_ISOLATED']}")
+    print(f"    - UNKNOWN:           {counts['UNKNOWN']}")
 
     if args.facts_json and args.facts_json.exists():
         with open(args.facts_json, "r", encoding="utf-8") as f:
             facts = json.load(f)
         facts["settlement_counts"] = counts
+        facts["detour_metrics"] = detours
         facts["settlements"] = results["settlements"]
+        facts["connectivity_disclaimer"] = results["disclaimer"]
         out_p = args.out_json if args.out_json else args.facts_json
         with open(out_p, "w", encoding="utf-8") as f:
             json.dump(facts, f, indent=2)
-        print(f"  [OK] Updated facts.json with connectivity states -> {out_p}")
+        print(f"  [OK] Updated facts.json with risk-stratified connectivity states -> {out_p}")
 
 
 if __name__ == "__main__":
