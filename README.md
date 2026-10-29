@@ -44,6 +44,21 @@ There were 179 flood-positive and 1,190 zero-flood scenes; only 123 zero-flood s
 
 The full requirement-by-requirement status and remaining work are in [HACKATHON_REQUIREMENTS.md](docs/HACKATHON_REQUIREMENTS.md).
 
+
+## Full-Stack Automated Architecture
+
+In addition to the standalone research CLI tools, FloodSight AI includes a complete full-stack automated platform that eliminates manual raster downloading:
+
+1. **Automated Planetary Computer STAC Ingestion**:
+   - Queries Microsoft Planetary Computer STAC API for **Sentinel-1 RTC** (Radiometrically Terrain Corrected SAR at 10m) and **Sentinel-2 L2A** (surface reflectance).
+   - Automatically signs access tokens, discovers same-orbit pre/post pairs, and reprojects assets onto a unified 20m UTM analysis grid.
+2. **Asynchronous Execution & Database Queue**:
+   - Powered by FastAPI and PostgreSQL 16, an autonomous daemon worker claims jobs through a 9-stage lifecycle (`validating` → `searching_data` → `downloading` → `preprocessing` → `flood_mapping` → `damage_analysis` → `connectivity_analysis` → `generating_report` → `completed`).
+3. **Interactive Web Workspace & Map Dashboard**:
+   - Built with React 19 and MapLibre GL, featuring 1-click flood disaster benchmarks (Assam, Sylhet, Emilia-Romagna, Kerala), real-time stage progress tracking, and layer visibility toggles (Flood, Infrastructure, Settlements, AOI).
+4. **Automated PDF Situation Reports**:
+   - Generates FEMA-standard PDF situation reports and vector GeoJSON exports directly from persisted facts.
+
 ## Setup
 
 Use Python 3.10 or later. From the repository directory, create and activate an environment, then install the dependencies:

@@ -11,7 +11,7 @@ Comprehensive test suite verifying:
 
 import numpy as np
 import pytest
-import torch
+torch = pytest.importorskip("torch", reason="PyTorch is required for neural model unit tests")
 
 from model import create_unet_model, FloodUNet
 from predict import apply_anti_hallucination_filters

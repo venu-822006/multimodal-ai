@@ -19,7 +19,7 @@ inputs are supplied, and every output requires human review.
 | Pre-event OSM and leakage controls | ohsome snapshot is requested one day before the event; evaluation-only reference tools are separate | Implemented for the worker; a query/network failure now fails the job rather than turning missing OSM into zero impact. Upstream KuroSiwo label provenance is not fully audited. |
 | DEM bonus | Reprojects a supplied/local DEM to the flood grid and traces a D8 path | Partial: terrain-only screening, not a hydraulic or flood-spread forecast. DEM acquisition is not automatic. |
 | Grounded report/dashboard | Values are read from computed `facts.json`; maps show exposure layers and caveats | Implemented for generated outputs. Provenance is explicitly recorded as unverified when caller-supplied metadata cannot establish it. |
-| Judge enters AOI/date and gets a result | CLI takes bbox/date and runs the worker when prepared scenes are provided | Not end-to-end yet: credentials-backed Sentinel acquisition and raw-GRD preprocessing are missing. |
+| Judge enters AOI/date and gets a result | Web UI / API (`POST /api/analyses`) takes bbox and date; automated Planetary Computer STAC service discovers, signs, streams, and grids Sentinel-1 RTC and Sentinel-2 L2A scenes, executing the full 9-stage pipeline asynchronously to emit PDF reports and interactive maps without manual file prep. Standalone CLI remains available for local files. | Implemented via Full-Stack STAC Integration |
 | Generalize to unseen Himalayan scenes | Event 1111005 was reserved for testing; 1111006 was used for validation/calibration | Evaluation protocol implemented; measured performance is inadequate for operational decisions. |
 
 ## Run requirements
