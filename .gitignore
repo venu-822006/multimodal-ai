@@ -83,3 +83,8 @@ outputs/uncertainty_smoke/
 outputs/default_model_smoke/
 outputs/hackathon_holdout_*/
 checkpoints/ready_run/
+
+# Node.js
+node_modules/
+dist/
+

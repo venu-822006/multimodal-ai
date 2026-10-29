@@ -1,0 +1,42 @@
+# FloodSight AI backend runtime dependencies.
+# Versions are pinned to the set the test suite was executed against.
+
+# Web framework and validation
+fastapi==0.121.3
+uvicorn[standard]==0.41.0
+pydantic==2.13.0
+pydantic-settings==2.13.1
+
+# Persistence
+sqlalchemy==2.0.45
+psycopg[binary]==3.2.10
+alembic==1.17.1
+
+# Authentication
+argon2-cffi==25.1.0
+
+# Custom flood segmentation model
+# CPU wheels are sufficient; install from the CUDA index for GPU inference:
+#   pip install torch==2.14.1 --index-url https://download.pytorch.org/whl/cu124
+torch==2.14.1
+scikit-image==0.26.0
+
+# Geospatial processing
+numpy==2.3.5
+scipy==1.16.3
+shapely==2.1.2
+pyproj==3.7.2
+rasterio==1.5.0
+geopandas==1.1.1
+
+# Satellite imagery acquisition
+pystac-client==0.9.0
+planetary-computer==1.0.0
+
+# Reporting
+reportlab==4.4.4
+
+# Testing
+httpx==0.28.1
+pytest==8.4.2
+pytest-cov==7.0.0

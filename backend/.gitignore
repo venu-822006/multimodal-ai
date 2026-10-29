@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Secrets and local configuration
+.env
+.env.local
+*.env
+!.env.example
+
+# Trained weights and datasets. Weights are provided out of band via MODEL_PATH.
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.bin
+checkpoints/
+models/
+data/
+# The application's SQLAlchemy models package is source code, not weights.
+!app/models/
+
+# Generated analysis artifacts
+var/
+backend/var/
+*.tif
+*.tiff
+*.geotiff
+outputs/
+
+# Node
+node_modules/
+dist/
+.DS_Store
