@@ -1,0 +1,356 @@
+{
+  "flood_area_km2": 4.92844,
+  "flood_pixel_count": 13705,
+  "total_valid_pixels": 77284,
+  "flood_fraction": 0.177333,
+  "bbox": [
+    91.5,
+    26.0,
+    91.55,
+    26.05
+  ],
+  "crs": "EPSG:4326",
+  "bbox_crs": "EPSG:4326",
+  "pixel_area_m2": 359.61,
+  "pixel_resolution_approx_m": 18.96,
+  "spatial_measurement_available": true,
+  "spatial_measurement_unavailable_reason": null,
+  "model_config": {
+    "model": "physics_sar_dualpol_heuristic",
+    "classes": 2,
+    "base_channels": 24
+  },
+  "normalization": {
+    "type": "direct_db"
+  },
+  "checkpoint": "sar_physics_detector",
+  "checkpoint_sha256": "physics_heuristic_no_weights",
+  "decision_status": "RESEARCH_ONLY_NOT_OPERATIONALLY_VALIDATED",
+  "requires_human_review": true,
+  "decision_use": "informational mapping only; verify against independent geospatial evidence",
+  "val_flood_iou": null,
+  "epoch": 0,
+  "anti_hallucination_metrics": {
+    "confidence_threshold_used": 0.5,
+    "min_cluster_px_used": 10,
+    "raw_candidates": 14603,
+    "slope_hallucinations_filtered": 77,
+    "temporal_false_positives_filtered": 8,
+    "speckle_noise_pixels_filtered": 813,
+    "retained_flood_candidate_pixels": 13705,
+    "noise_reduction_pct": 6.1
+  },
+  "uncertainty": {
+    "raster": "multimodal-ai\\outputs\\e2e_test_job\\job_1793248389_post_aoi_uncertainty.tif",
+    "method": "normalized binary predictive entropy",
+    "calibrated": false,
+    "mean": 0.3743402361869812,
+    "fraction_at_least_0_5": 0.3288002691372082,
+    "interpretation": "High values indicate ambiguity near decision boundaries; low values indicate distinct radar return."
+  },
+  "prediction_mode": "physics_calibrated_sar_dualpol_with_slope_gate",
+  "debris_detection": {
+    "flood_pixel_count": 13705,
+    "debris_pixel_count": 0,
+    "total_valid_pixels": 77284,
+    "debris_heuristic_score": 0.0,
+    "debris_confidence_score": 0.0,
+    "method": "Multi-modal classification (bimodal_sar_terrain)",
+    "minimum_backscatter_increase_db": 1.5,
+    "optical_used": false,
+    "slope_used": true,
+    "classes": {
+      "0": "Background",
+      "1": "Class A: Flood/Inundation (core)",
+      "2": "Class B: Multi-modal debris/surface change (calibrated candidate)"
+    }
+  },
+  "debris_detection_status": "experimental_surface_change_candidates",
+  "debris_area_km2": 0.0,
+  "debris_heuristic_score": 0.0,
+  "cross_sensor_optical": {
+    "status": "not_available",
+    "note": "No real Sentinel-2 bands were supplied; no optical confirmation was used."
+  },
+  "buildings_affected": 1,
+  "buildings_affected_confidence": null,
+  "road_length_affected_km": 1.99,
+  "bridges_affected": 0,
+  "bridges_affected_confidence": null,
+  "potentially_affected_assets": {
+    "buildings": {
+      "type": "FeatureCollection",
+      "features": [
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  91.52250000000001,
+                  26.022499999999997
+                ],
+                [
+                  91.5275,
+                  26.022499999999997
+                ],
+                [
+                  91.5275,
+                  26.0275
+                ],
+                [
+                  91.52250000000001,
+                  26.0275
+                ],
+                [
+                  91.52250000000001,
+                  26.022499999999997
+                ]
+              ]
+            ]
+          },
+          "properties": {
+            "building": "yes",
+            "osm_id": 2001,
+            "exposure": "potentially_affected_by_mapped_inundation"
+          }
+        }
+      ]
+    },
+    "roads": {
+      "type": "FeatureCollection",
+      "features": [
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                91.5,
+                26.025
+              ],
+              [
+                91.525,
+                26.025
+              ],
+              [
+                91.55,
+                26.025
+              ]
+            ]
+          },
+          "properties": {
+            "highway": "primary",
+            "name": "Main Valley Highway",
+            "osm_id": 1001,
+            "exposure": "intersects_mapped_inundation"
+          }
+        },
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                91.5,
+                26.025
+              ],
+              [
+                91.525,
+                26.045
+              ],
+              [
+                91.55,
+                26.025
+              ]
+            ]
+          },
+          "properties": {
+            "highway": "secondary",
+            "name": "Northern Bypass Detour",
+            "osm_id": 1002,
+            "exposure": "intersects_mapped_inundation"
+          }
+        }
+      ]
+    },
+    "bridges": {
+      "type": "FeatureCollection",
+      "features": []
+    }
+  },
+  "exposure_interpretation": "Buildings and road lengths intersecting mapped inundation, plus bridges within 20 m, are potentially affected. Spatial overlap does not confirm physical damage or road closure.",
+  "wording_standard": "Reported counts represent assets potentially affected by mapped inundation; they are not confirmed damage counts.",
+  "osm_snapshot_date": "2024-07-01",
+  "osm_source": "ohsome API",
+  "settlement_counts": {
+    "CONNECTED": 1,
+    "FUNCTIONAL_DETOUR": 0,
+    "CRITICAL_ISOLATED": 1,
+    "CUT_OFF": 1,
+    "UNKNOWN": 0
+  },
+  "settlements": [
+    {
+      "settlement": "Western Village",
+      "state": "CUT_OFF",
+      "substate": "CRITICAL_ISOLATED",
+      "triage_priority": "PRIORITY_1_CRITICAL_ISOLATION",
+      "longitude": 91.51,
+      "latitude": 26.025,
+      "target": "Eastern Hub",
+      "target_type": "town",
+      "pre_distance_km": 6.99,
+      "post_distance_km": null,
+      "detour_additional_km": null,
+      "detour_penalty_pct": null,
+      "settlement_to_road_km": 0.999,
+      "target_to_road_km": 0.999,
+      "reason": "All mapped road routes to emergency medical facilities and town centers are blocked by modeled flood inundation. Immediate relief/boat/airlift required."
+    },
+    {
+      "settlement": "Eastern Hub",
+      "state": "CONNECTED",
+      "substate": "CONNECTED",
+      "triage_priority": "PRIORITY_3_NORMAL",
+      "longitude": 91.53999999999999,
+      "latitude": 26.025,
+      "target": "Regional Health Clinic",
+      "target_type": "medical_facility",
+      "pre_distance_km": 2.0,
+      "post_distance_km": 2.0,
+      "detour_additional_km": 0.0,
+      "detour_penalty_pct": 0.0,
+      "settlement_to_road_km": 0.999,
+      "target_to_road_km": 1.005,
+      "reason": "Direct mapped route remains unimpaired under the road-disruption scenario."
+    }
+  ],
+  "connectivity_method": "NetworkX road graph with flood-candidate edge exclusion & detour penalty quantification",
+  "connectivity_interpretation": "CUT_OFF / CRITICAL_ISOLATED denotes simulated loss of road route to any mapped destination under assumed impassability.",
+  "road_disruption_assumption": "Any mapped road edge intersecting the flood candidate buffered by 30 m is treated as impassable. Routes requiring detours >= 0.5 km are classified FUNCTIONAL_DETOUR.",
+  "road_disruption_buffer_m": 30.0,
+  "dem_flow_analysis": {
+    "status": "SUCCESS",
+    "downstream_length_km": 0.0,
+    "elevation_start_m": 44.2,
+    "elevation_end_m": 44.2,
+    "elevation_drop_m": 0.0,
+    "hydraulic_gradient_m_per_km": 0.0,
+    "terrain_gradient_m_per_km": 0.0,
+    "flow_path_steps": 1,
+    "flow_path_coords": [
+      [
+        91.50009,
+        26.045234
+      ]
+    ],
+    "interpretation": "Terrain-only D8 downslope screening path from the mapped flood boundary; not a hydrodynamic forecast, travel-time estimate, or validated hazard prediction.",
+    "downstream_communities_near_screening_path": []
+  },
+  "input_provenance": {
+    "sentinel1": {
+      "pre_raster": "job_1793248389_pre_aoi.tif",
+      "post_raster": "job_1793248389_post_aoi.tif",
+      "source": "caller-supplied analysis-ready rasters; file identity and provider product records are not verified against STAC"
+    },
+    "sentinel1_pairing": {
+      "stac_search_status": "PAIR_FOUND",
+      "best_discovered_pair": {
+        "pre_scene": {
+          "id": "S1A_IW_GRDH_1SDV_20240629T115716_20240629T115741_054538_06A32B_5381_COG",
+          "datetime": "2024-06-29T11:57:16.178258Z",
+          "relative_orbit": "41",
+          "direction": "ASCENDING",
+          "polarizations": [
+            "VH",
+            "VV"
+          ],
+          "bbox": [
+            90.564873,
+            25.071005,
+            93.418785,
+            26.999285
+          ],
+          "assets": {
+            "vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2024/06/29/S1A_IW_GRDH_1SDV_20240629T115716_20240629T115741_054538_06A32B_5381_COG.SAFE/measurement/s1a-iw-grd-vh-20240629t115716-20240629t115741-054538-06a32b-002-cog.tiff",
+            "vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2024/06/29/S1A_IW_GRDH_1SDV_20240629T115716_20240629T115741_054538_06A32B_5381_COG.SAFE/measurement/s1a-iw-grd-vv-20240629t115716-20240629t115741-054538-06a32b-001-cog.tiff",
+            "Product": "https://download.dataspace.copernicus.eu/odata/v1/Products(e065f398-b166-4cfb-bc4c-2f2db3af1fba)/$value",
+            "thumbnail": "https://datahub.creodias.eu/odata/v1/Assets(ac022a0a-3247-4524-8d0a-19d078a5aa8e)/$value",
+            "safe_manifest": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2024/06/29/S1A_IW_GRDH_1SDV_20240629T115716_20240629T115741_054538_06A32B_5381_COG.SAFE/manifest.safe",
+            "schema-noise-vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2024/06/29/S1A_IW_GRDH_1SDV_20240629T115716_20240629T115741_054538_06A32B_5381_COG.SAFE/annotation/calibration/noise-s1a-iw-grd-vh-20240629t115716-20240629t115741-054538-06a32b-002-cog.xml",
+            "schema-noise-vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2024/06/29/S1A_IW_GRDH_1SDV_20240629T115716_20240629T115741_054538_06A32B_5381_COG.SAFE/annotation/calibration/noise-s1a-iw-grd-vv-20240629t115716-20240629t115741-054538-06a32b-001-cog.xml",
+            "schema-product-vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2024/06/29/S1A_IW_GRDH_1SDV_20240629T115716_20240629T115741_054538_06A32B_5381_COG.SAFE/annotation/s1a-iw-grd-vh-20240629t115716-20240629t115741-054538-06a32b-002-cog.xml",
+            "schema-product-vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2024/06/29/S1A_IW_GRDH_1SDV_20240629T115716_20240629T115741_054538_06A32B_5381_COG.SAFE/annotation/s1a-iw-grd-vv-20240629t115716-20240629t115741-054538-06a32b-001-cog.xml",
+            "schema-calibration-vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2024/06/29/S1A_IW_GRDH_1SDV_20240629T115716_20240629T115741_054538_06A32B_5381_COG.SAFE/annotation/calibration/calibration-s1a-iw-grd-vh-20240629t115716-20240629t115741-054538-06a32b-002-cog.xml",
+            "schema-calibration-vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2024/06/29/S1A_IW_GRDH_1SDV_20240629T115716_20240629T115741_054538_06A32B_5381_COG.SAFE/annotation/calibration/calibration-s1a-iw-grd-vv-20240629t115716-20240629t115741-054538-06a32b-001-cog.xml"
+          }
+        },
+        "post_scene": {
+          "id": "S1A_IW_GRDH_1SDV_20240711T115715_20240711T115740_054713_06A943_829E_COG",
+          "datetime": "2024-07-11T11:57:15.843566Z",
+          "relative_orbit": "41",
+          "direction": "ASCENDING",
+          "polarizations": [
+            "VH",
+            "VV"
+          ],
+          "bbox": [
+            90.564247,
+            25.070885,
+            93.418221,
+            26.999249
+          ],
+          "assets": {
+            "vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2024/07/11/S1A_IW_GRDH_1SDV_20240711T115715_20240711T115740_054713_06A943_829E_COG.SAFE/measurement/s1a-iw-grd-vh-20240711t115715-20240711t115740-054713-06a943-002-cog.tiff",
+            "vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2024/07/11/S1A_IW_GRDH_1SDV_20240711T115715_20240711T115740_054713_06A943_829E_COG.SAFE/measurement/s1a-iw-grd-vv-20240711t115715-20240711t115740-054713-06a943-001-cog.tiff",
+            "Product": "https://download.dataspace.copernicus.eu/odata/v1/Products(1dc6d7f8-7702-4bc3-9c7e-06f0199c54dc)/$value",
+            "thumbnail": "https://datahub.creodias.eu/odata/v1/Assets(40d34b1b-85b5-4f48-b413-72bf6915f803)/$value",
+            "safe_manifest": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2024/07/11/S1A_IW_GRDH_1SDV_20240711T115715_20240711T115740_054713_06A943_829E_COG.SAFE/manifest.safe",
+            "schema-noise-vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2024/07/11/S1A_IW_GRDH_1SDV_20240711T115715_20240711T115740_054713_06A943_829E_COG.SAFE/annotation/calibration/noise-s1a-iw-grd-vh-20240711t115715-20240711t115740-054713-06a943-002-cog.xml",
+            "schema-noise-vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2024/07/11/S1A_IW_GRDH_1SDV_20240711T115715_20240711T115740_054713_06A943_829E_COG.SAFE/annotation/calibration/noise-s1a-iw-grd-vv-20240711t115715-20240711t115740-054713-06a943-001-cog.xml",
+            "schema-product-vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2024/07/11/S1A_IW_GRDH_1SDV_20240711T115715_20240711T115740_054713_06A943_829E_COG.SAFE/annotation/s1a-iw-grd-vh-20240711t115715-20240711t115740-054713-06a943-002-cog.xml",
+            "schema-product-vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2024/07/11/S1A_IW_GRDH_1SDV_20240711T115715_20240711T115740_054713_06A943_829E_COG.SAFE/annotation/s1a-iw-grd-vv-20240711t115715-20240711t115740-054713-06a943-001-cog.xml",
+            "schema-calibration-vh": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2024/07/11/S1A_IW_GRDH_1SDV_20240711T115715_20240711T115740_054713_06A943_829E_COG.SAFE/annotation/calibration/calibration-s1a-iw-grd-vh-20240711t115715-20240711t115740-054713-06a943-002-cog.xml",
+            "schema-calibration-vv": "s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2024/07/11/S1A_IW_GRDH_1SDV_20240711T115715_20240711T115740_054713_06A943_829E_COG.SAFE/annotation/calibration/calibration-s1a-iw-grd-vv-20240711t115715-20240711t115740-054713-06a943-001-cog.xml"
+          }
+        },
+        "pairing_score": 1.0,
+        "relative_orbit": "41",
+        "direction": "ASCENDING"
+      },
+      "input_files_linked_to_discovered_pair": false,
+      "rasters": [
+        {
+          "role": "pre",
+          "filename": "job_1793248389_pre_aoi.tif",
+          "relative_orbit": "41",
+          "orbit_direction": null,
+          "acquisition_datetime": null
+        },
+        {
+          "role": "post",
+          "filename": "job_1793248389_post_aoi.tif",
+          "relative_orbit": "41",
+          "orbit_direction": null,
+          "acquisition_datetime": null
+        }
+      ],
+      "same_orbit_verified_from_tags": false,
+      "event_order_verified_from_tags": false,
+      "operator_must_verify_pair_when_tags_missing": true,
+      "stac_orbit_consistency": "not_checkable_input_orbit_tags_missing"
+    },
+    "osm": {
+      "provider": "ohsome API",
+      "snapshot_date": "2024-07-01"
+    }
+  },
+  "data_attributions": [
+    "Sentinel-1 prepared rasters were caller-supplied; provider, acquisition, and licence metadata were not independently verified.",
+    "\u00a9 OpenStreetMap contributors; historical snapshot 2024-07-01, retrieved via ohsome (ODbL).",
+    "Training dataset: KuroSiwo (Bountos et al., 2024).",
+    "A caller-supplied or locally configured DEM was used; product provenance and licence were not independently verified."
+  ]
+}

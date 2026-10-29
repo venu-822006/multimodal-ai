@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>FloodSight AI — Executive Situation Report</title>
+<style>
+  @page { size: A4; margin: 15mm; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #1f2937;
+    background: #fff;
+    margin: 0;
+    padding: 20px;
+    font-size: 13px;
+    line-height: 1.45;
+  }
+  .header {
+    border-bottom: 3px solid #1e40af;
+    padding-bottom: 12px;
+    margin-bottom: 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+  }
+  .title-group h1 {
+    font-size: 24px;
+    margin: 0;
+    color: #1e3a8a;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+  }
+  .title-group .subtitle {
+    font-size: 12px;
+    color: #4b5563;
+    font-weight: 500;
+  }
+  .meta-box {
+    text-align: right;
+    font-size: 11px;
+    color: #6b7280;
+  }
+  .badge {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+  .badge-danger { background: #fee2e2; color: #991b1b; }
+  .badge-warning { background: #fef3c7; color: #92400e; }
+  .badge-success { background: #dcfce7; color: #166534; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .card {
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 12px;
+    background: #f9fafb;
+  }
+  .card-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    color: #6b7280;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+  .card-stat {
+    font-size: 24px;
+    font-weight: 800;
+    color: #111827;
+  }
+  .card-subtext {
+    font-size: 11px;
+    color: #6b7280;
+    margin-top: 2px;
+  }
+
+  .section {
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 14px;
+    margin-bottom: 14px;
+  }
+  .section h2 {
+    font-size: 14px;
+    margin: 0 0 10px 0;
+    color: #1e3a8a;
+    font-weight: 700;
+    border-bottom: 1px solid #e5e7eb;
+    padding-bottom: 4px;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  th, td {
+    padding: 6px 10px;
+    text-align: left;
+    border-bottom: 1px solid #e5e7eb;
+  }
+  th {
+    background: #f3f4f6;
+    font-weight: 600;
+    color: #374151;
+  }
+
+  .stat-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 0;
+    border-bottom: 1px dashed #e5e7eb;
+  }
+  .stat-row:last-child { border-bottom: none; }
+
+  .footer {
+    margin-top: 18px;
+    padding-top: 10px;
+    border-top: 1px solid #d1d5db;
+    font-size: 9.5px;
+    color: #6b7280;
+    line-height: 1.35;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="title-group">
+    <h1>FloodSight AI</h1>
+    <div class="subtitle">Rapid Spaceborne Flood Damage Assessment | Track B: Multimodal AI Hackathon 2026</div>
+  </div>
+  <div class="meta-box">
+    <div><strong>Report ID:</strong> FS-49872</div>
+    <div><strong>Generated:</strong> 2026-10-29 10:03 UTC</div>
+    <div><strong>Model Checkpoint:</strong> sar_physics_detector</div>
+  </div>
+</div>
+
+<div class="grid">
+  <div class="card">
+    <div class="card-title">1. Flood Inundation Area</div>
+    <div class="card-stat">4.93 km²</div>
+    <div class="card-subtext">13,705 flooded pixels (17.73% of area)</div>
+  </div>
+  <div class="card">
+    <div class="card-title">2. Buildings Potentially Affected</div>
+    <div class="card-stat">1</div>
+    <div class="card-subtext">1.99 km roads | 0 bridges</div>
+  </div>
+  <div class="card">
+    <div class="card-title">3. Potential Access Loss (Modelled)</div>
+    <div class="card-stat" style="color: #b91c1c;">1</div>
+    <div class="card-subtext">1 connected | 0 unmapped</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>Question 1: Where the Flood Hit (Satellite Inundation Extent)</h2>
+  <div class="stat-row">
+    <span><strong>Bounding Box (WGS-84):</strong></span>
+    <span>[91.5, 26.0, 91.55, 26.05]</span>
+  </div>
+  <div class="stat-row">
+    <span><strong>Spatial Resolution:</strong></span>
+    <span>18.96 m / pixel (Sentinel-1 SAR IW)</span>
+  </div>
+  <div class="stat-row">
+    <span><strong>Primary Mapped Inundation (Class A):</strong></span>
+    <span>4.93 km²</span>
+  </div>
+  <div class="stat-row">
+    <span><strong>Model ambiguity (predictive entropy, uncalibrated):</strong></span>
+    <span>mean 0.374; 32.9% of valid pixels ≥ 0.5</span>
+  </div>
+  <div class="stat-row">
+    <span><strong>Debris / Surface Change Candidate (Class B - Experimental):</strong></span>
+    <span>0.00 km² (uncalibrated heuristic score: 0.0)</span>
+  </div>
+  <div class="stat-row">
+    <span><strong>Terrain-only D8 downslope screen (not a flood forecast):</strong></span>
+    <span>No terrain-only D8 path could be traced from the available DEM</span>
+  </div>
+  <div class="stat-row">
+    <span><strong>Segmentation Model:</strong></span>
+    <span>U-Net (dual-polarization SAR VV/VH segmentation)</span>
+  </div>
+</div>
+
+<div class="section">
+  <h2>Question 2: What Was Damaged (Infrastructure Exposure)</h2>
+  <div class="stat-row">
+    <span><strong>Building Structures:</strong></span>
+    <span><strong>1</strong> structures affected or potentially affected</span>
+  </div>
+  <div class="stat-row">
+    <span><strong>Road Network Inundated:</strong></span>
+    <span><strong>1.99 km</strong> of road segments intersecting flood mask</span>
+  </div>
+  <div class="stat-row">
+    <span><strong>Bridges Impacted:</strong></span>
+    <span><strong>0</strong> bridges within inundation zone (OSM snapshot)</span>
+  </div>
+  <div style="font-size: 10px; color: #6b7280; margin-top: 6px; font-style: italic;">
+    * In accordance with operational standards, exposure numbers represent features affected or potentially affected by mapped inundation.
+  </div>
+</div>
+
+<div class="section">
+  <h2>Question 3: Potential Access Loss (Road Connectivity Scenario)</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Settlement / Community</th>
+        <th>Access State</th>
+        <th>Target Town / Medical Facility</th>
+        <th>Pre-event Modeled Route Distance</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+              <td><strong>Western Village</strong></td>
+              <td><span class="badge badge-danger">POTENTIALLY CUT OFF (MODEL)</span></td>
+              <td>Eastern Hub</td>
+              <td>6.99 km</td>
+            </tr>
+<tr>
+              <td><strong>Eastern Hub</strong></td>
+              <td><span class="badge badge-success">CONNECTED</span></td>
+              <td>Regional Health Clinic</td>
+              <td>2.0 km</td>
+            </tr>
+    </tbody>
+  </table>
+  <div style="font-size: 10.5px; color: #4b5563; margin-top: 8px;">
+    <strong>Modelled scenario:</strong> 1 communities have no remaining route to a mapped town or medical facility after overlapping road edges are treated as impassable; 1 retain a mapped route; 0 are unknown. This is potential access loss, not a confirmed road closure. Verify routes in the field.
+  </div>
+</div>
+
+<div class="section" style="background: #fdfbf7; border-color: #f3e8d2;">
+  <h2>कार्यकारी सारांश (Bilingual Rescuer Briefing — Nepali)</h2>
+  <div style="font-size: 11px; color: #451a03; line-height: 1.5;">
+    <strong>उद्धार तथा राहत टोलीका लागि मुख्य वस्तुस्थिति:</strong><br>
+    • कुल बाढी प्रभावित क्षेत्र: <strong>4.93 वर्ग कि.मि.</strong> (क्षेत्रफलको 17.73%)<br>
+    • सम्भावित प्रभावित संरचनाहरू: <strong>1 घर/भवन</strong>, <strong>1.99 कि.मि. सडक खण्ड</strong>, र <strong>0 पुल</strong><br>
+    • मोडेलअनुसार सम्भावित सडक पहुँच अवरोध: <strong>1 बस्तीहरू</strong>मा नक्साङ्कित सडक खण्डहरू बाढी क्षेत्रमा परेका कारण वैकल्पिक मार्ग देखिएन (1 मा मार्ग देखियो, 0 अज्ञात)। यो पुष्टि भएको सडक बन्द अवस्था होइन; स्थलगत जाँच आवश्यक छ।
+  </div>
+</div>
+
+<div class="footer">
+  <strong>Data Sources & Attributions:</strong><br>
+  Sentinel-1 prepared rasters were caller-supplied; provider, acquisition, and licence metadata were not independently verified.<br>© OpenStreetMap contributors; historical snapshot 2024-07-01, retrieved via ohsome (ODbL).<br>Training dataset: KuroSiwo (Bountos et al., 2024).<br>A caller-supplied or locally configured DEM was used; product provenance and licence were not independently verified.
+</div>
+
+</body>
+</html>

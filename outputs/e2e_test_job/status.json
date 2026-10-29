@@ -1,0 +1,59 @@
+{
+  "job_id": "job_1793248389",
+  "bbox": [
+    91.5,
+    26.0,
+    91.55,
+    26.05
+  ],
+  "flood_date": "2024-07-02",
+  "current_state": "COMPLETED",
+  "error_message": null,
+  "history": [
+    {
+      "state": "VALIDATING",
+      "timestamp": "2026-10-29T04:33:09.572665Z",
+      "detail": "Validating bounding box and date inputs."
+    },
+    {
+      "state": "SEARCHING_DATA",
+      "timestamp": "2026-10-29T04:33:09.576179Z",
+      "detail": "Discovering Sentinel-1 pair and clear-sky Sentinel-2 metadata in Copernicus STAC."
+    },
+    {
+      "state": "DOWNLOADING",
+      "timestamp": "2026-10-29T04:33:12.344237Z",
+      "detail": "Acquiring Sentinel-1 scenes (caller-supplied or auto-downloaded from Planetary Computer STAC)."
+    },
+    {
+      "state": "PREPROCESSING",
+      "timestamp": "2026-10-29T04:33:12.506854Z",
+      "detail": "Checked VV/VH dB values, CRS, alignment, AOI coverage; orbit/date tags incomplete; operator must verify the supplied pair."
+    },
+    {
+      "state": "FLOOD_MAPPING",
+      "timestamp": "2026-10-29T04:33:12.508823Z",
+      "detail": "Running flood segmentation with DEM slope gating and temporal change screening."
+    },
+    {
+      "state": "DAMAGE_ANALYSIS",
+      "timestamp": "2026-10-29T04:33:13.480696Z",
+      "detail": "Assessing building, road, and bridge exposure using approved wording."
+    },
+    {
+      "state": "CONNECTIVITY_ANALYSIS",
+      "timestamp": "2026-10-29T04:33:14.088533Z",
+      "detail": "Calculating road access using the pre-event OSM snapshot."
+    },
+    {
+      "state": "GENERATING_REPORT",
+      "timestamp": "2026-10-29T04:33:16.442207Z",
+      "detail": "Compiling the one-page situation report and interactive map dashboard."
+    },
+    {
+      "state": "COMPLETED",
+      "timestamp": "2026-10-29T04:33:16.728630Z",
+      "detail": "Job finished successfully. Output ready in multimodal-ai\\outputs\\e2e_test_job"
+    }
+  ]
+}

@@ -1,0 +1,68 @@
+{
+  "benchmark": "Himalayan Held-Out Event 1111005 (Unseen Mountain Terrain)",
+  "baseline_model": "Raw FloodUNet (threshold=0.49, no physical screening)",
+  "hardened_model": "FloodUNet + DEM Topographic Slope Gate (<=8 deg) + Temporal Drop Filter (dVV>=1.5 dB)",
+  "metrics_comparison": {
+    "all_scene_macro": {
+      "iou": {
+        "baseline": 0.1395,
+        "filtered": 0.5648970461095101,
+        "delta": 0.42539704610951007,
+        "relative_change_pct": 304.94
+      },
+      "f1": {
+        "baseline": 0.1542,
+        "filtered": 0.5751575648414986,
+        "delta": 0.4209575648414986,
+        "relative_change_pct": 272.99
+      },
+      "precision": {
+        "baseline": 0.169,
+        "filtered": 0.5780122478386167,
+        "delta": 0.40901224783861667,
+        "relative_change_pct": 242.02
+      },
+      "recall": {
+        "baseline": 0.158,
+        "filtered": 0.5941574207492795,
+        "delta": 0.43615742074927943,
+        "relative_change_pct": 276.05
+      }
+    },
+    "positive_scenes_macro": {
+      "iou": {
+        "baseline": 0.3797,
+        "filtered": 0.4251456989247312,
+        "delta": 0.045445698924731215
+      },
+      "f1": {
+        "baseline": 0.4922,
+        "filtered": 0.5017134408602151,
+        "delta": 0.00951344086021505
+      },
+      "precision": {
+        "baseline": 0.6052,
+        "filtered": 0.5230161290322581,
+        "delta": -0.08218387096774182
+      },
+      "recall": {
+        "baseline": 0.5214,
+        "filtered": 0.643497311827957,
+        "delta": 0.12209731182795702
+      }
+    },
+    "zero_flood_false_alarms": {
+      "clean_scenes_pct": {
+        "baseline": 10.34,
+        "filtered": 58.65,
+        "delta_percentage_points": 48.31
+      },
+      "scenes_with_false_positives": {
+        "baseline": 1067,
+        "filtered": 497,
+        "eliminated_fp_scenes": 570
+      }
+    }
+  },
+  "verdict": "Anti-hallucination slope and temporal gating dramatically suppress false alarms in steep mountain shadows, raising clean zero-flood scenes from 10.34% to 58.65% while lifting positive-scene macro IoU to 42.51% and all-scene macro IoU to 56.49%."
+}

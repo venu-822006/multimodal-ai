@@ -1,0 +1,35 @@
+{
+  "status": "success",
+  "bbox": [
+    91.5,
+    26.0,
+    91.55,
+    26.05
+  ],
+  "flood_date": "2024-07-02",
+  "grid": {
+    "width": 278,
+    "height": 278,
+    "crs": "EPSG:4326",
+    "resolution_deg": 0.00018
+  },
+  "pre_event": {
+    "item_id": "S1A_IW_GRDH_1SDV_20240629T115716_20240629T115741_054538_06A32B_rtc",
+    "date": "2024-06-29",
+    "orbit": 41,
+    "file": "C:\\Users\\kvenu\\Downloads\\multimodalai\\multimodal-ai\\outputs\\e2e_verification\\pre_event.tif"
+  },
+  "post_event": {
+    "item_id": "S1A_IW_GRDH_1SDV_20240711T115715_20240711T115740_054713_06A943_rtc",
+    "date": "2024-07-11",
+    "orbit": 41,
+    "file": "C:\\Users\\kvenu\\Downloads\\multimodalai\\multimodal-ai\\outputs\\e2e_verification\\post_event.tif"
+  },
+  "optical": null,
+  "dem": {
+    "item_id": "Copernicus_DSM_COG_10_N26_00_E091_00_DEM",
+    "dem_file": "C:\\Users\\kvenu\\Downloads\\multimodalai\\multimodal-ai\\outputs\\e2e_verification\\dem_30m.tif",
+    "min_elevation_m": 0.0,
+    "max_elevation_m": 72.26709747314453
+  }
+}

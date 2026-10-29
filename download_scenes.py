@@ -8,6 +8,7 @@ Key capabilities:
   1. Searches Planetary Computer STAC for Sentinel-1 Radiometrically Terrain Corrected (RTC)
      scenes covering the target bounding box within the lookback/lookahead temporal window.
   2. Finds same-relative-orbit pre-event and post-event pairs with matching geometry.
+     Rejects cross-orbit pairs; fails clearly if no same-orbit match is found.
   3. Uses Planetary Computer token signing to access cloud-optimized GeoTIFFs.
   4. Reprojects and clips to the exact analysis grid in EPSG:4326.
   5. Converts linear radar power to decibels (10*log10), applies Lee-sigma 3x3 speckle filter,
@@ -131,13 +132,16 @@ def discover_and_download(
         if selected_post:
             break
 
-    # If strict same-orbit not found, pick closest pre and post
-    if not selected_post and post_items and pre_items:
-        selected_post = sorted(post_items, key=lambda x: abs((x["date"] - f_date).days))[0]
-        selected_pre = sorted(pre_items, key=lambda x: abs((f_date - x["date"]).days))[0]
-        print("[STAC] Notice: Same-orbit pair exact match unavailable; using closest temporal pair.")
-    elif not selected_post or not selected_pre:
-        raise RuntimeError("Could not find both pre-event and post-event Sentinel-1 observations.")
+    if not selected_post or not selected_pre:
+        orbit_info = (
+            f"Found {len(pre_items)} pre-event and {len(post_items)} post-event Sentinel-1 RTC items, "
+            f"but none share a matching relative orbit and flight direction. "
+            f"Same-orbit pairing is required for coherent SAR change detection. "
+            f"Expand the temporal window (--lookback-days / --lookahead-days), verify the target "
+            f"bounding box has Sentinel-1 coverage, or supply pre-processed same-orbit rasters "
+            f"via --pre-image and --post-image."
+        )
+        raise RuntimeError(orbit_info)
 
     print(f"[STAC] Selected Pre-event:  {selected_pre['id']} ({selected_pre['date']}) Orbit: {selected_pre['orbit']}")
     print(f"[STAC] Selected Post-event: {selected_post['id']} ({selected_post['date']}) Orbit: {selected_post['orbit']}")

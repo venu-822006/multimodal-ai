@@ -641,6 +641,163 @@ def predict_one(
     return facts
 
 
+
+
+# ---------------------------------------------------------------------------
+# Physics-Based SAR Dual-Pol Change Detector (Operational Fallback when Checkpoint Absent)
+# ---------------------------------------------------------------------------
+def predict_sar_heuristic(
+    scene_path: Path,
+    out_dir: Path,
+    pre_scene_path: Path | None = None,
+    dem_path: Path | None = None,
+    confidence_threshold: float = 0.50,
+    min_cluster_px: int = 10,
+    max_slope_deg: float = 8.0,
+    min_drop_db: float = 1.5,
+) -> dict:
+    """Predict flood extent using calibrated SAR dual-polarization backscatter change detection.
+    
+    Provides an operational fallback when a trained PyTorch model checkpoint is not
+    locally present, ensuring full end-to-end pipeline execution with physical grounding:
+      1. Water specular reflection causes low VV/VH backscatter (VV < -16 dB).
+      2. Inundation temporal change causes sharp specular drop (dVV >= 1.5 dB).
+      3. DEM topographic slope gating strictly removes mountain shadow false alarms (slope <= 8 deg).
+      4. Emits compliant predicted flood mask GeoTIFF, uncertainty entropy raster, and facts.json.
+    """
+    print(f"\n  [>] Running SAR Backscatter Change Detection on: {scene_path.name}")
+    image, transform, crs, nodata, valid_mask = load_scene(scene_path)
+    H, W, C = image.shape
+    vv_post = image[:, :, 0]
+    vh_post = image[:, :, 1] if C > 1 else vv_post
+
+    pre_image = None
+    delta_vv = None
+    if pre_scene_path and Path(pre_scene_path).is_file():
+        try:
+            pre_image, _, _, _, pre_valid = load_scene(Path(pre_scene_path))
+            delta_vv = pre_image[:, :, 0] - vv_post
+            valid_mask = valid_mask & pre_valid
+        except Exception as e:
+            print(f"    [Notice] Could not load pre-scene {pre_scene_path}: {e}")
+
+    # Compute continuous flood probability proxy from SAR physics
+    # Specular reflection backscatter response
+    z = -(vv_post - (-16.0)) / 2.5
+    if delta_vv is not None:
+        # Boost flood probability when coherent drop is observed
+        z += (delta_vv - min_drop_db) / 1.5
+    
+    prob_flood = 1.0 / (1.0 + np.exp(-np.clip(z, -10.0, 10.0)))
+    prob_map = np.stack([1.0 - prob_flood, prob_flood], axis=0).astype(np.float32)
+
+    # Topographic slope from DEM
+    slope = None
+    if dem_path is not None and Path(dem_path).is_file():
+        try:
+            with rasterio.open(dem_path) as dem_src:
+                dem_data = dem_src.read(1, out_shape=(H, W), resampling=rasterio.enums.Resampling.bilinear)
+                slope = compute_slope_from_dem(dem_data, cell_size_m=30.0)
+                print(f"    [Topography] Derived slope from DEM (max: {float(np.max(slope)):.1f} deg, mean: {float(np.mean(slope)):.1f} deg)")
+        except Exception as e:
+            print(f"    [Notice] Could not derive slope from DEM {dem_path}: {e}")
+
+    # Anti-hallucination screening (slope <= 8 deg, temporal drop, speckle filtering)
+    pred_mask, h_stats = apply_anti_hallucination_filters(
+        prob_map=prob_map,
+        confidence_thresh=confidence_threshold,
+        min_cluster_px=min_cluster_px,
+        slope=slope,
+        max_slope_deg=max_slope_deg,
+        pre_image=pre_image,
+        post_image=image if pre_image is not None else None,
+        min_drop_db=min_drop_db,
+    )
+    pred_mask[~valid_mask] = NODATA_OUT
+
+    print(
+        f"    [Anti-Hallucination] Raw: {h_stats['raw_candidates']:,} px -> "
+        f"Verified: {int((pred_mask == FLOOD_CLASS).sum()):,} px  "
+        f"({h_stats['noise_reduction_pct']:.1f}% noise reduced)"
+    )
+
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_tif = out_dir / f"{scene_path.stem}_flood_predicted.tif"
+    with rasterio.open(
+        out_tif, "w",
+        driver="GTiff",
+        height=H, width=W,
+        count=1,
+        dtype=np.uint8,
+        crs=crs,
+        transform=transform,
+        nodata=NODATA_OUT,
+        compress="lzw",
+    ) as dst:
+        dst.write(pred_mask, 1)
+        dst.update_tags(
+            values="0=background,1=flood,255=nodata",
+            source="FloodSight_AI_SAR_Physics",
+            decision_status="RESEARCH_ONLY_NOT_OPERATIONALLY_VALIDATED",
+            requires_human_review="true",
+            confidence_threshold=str(confidence_threshold),
+        )
+
+    # Normalized predictive entropy
+    safe_prob = np.clip(prob_map, 1e-7, 1.0)
+    uncertainty = -np.sum(safe_prob * np.log(safe_prob), axis=0) / np.log(2.0)
+    uncertainty = np.clip(uncertainty, 0.0, 1.0).astype(np.float32)
+    uncertainty[~valid_mask] = -1.0
+    uncertainty_path = out_dir / f"{scene_path.stem}_uncertainty.tif"
+    with rasterio.open(
+        uncertainty_path, "w",
+        driver="GTiff",
+        height=H, width=W,
+        count=1,
+        dtype=np.float32,
+        crs=crs,
+        transform=transform,
+        nodata=-1.0,
+        compress="lzw",
+    ) as dst:
+        dst.write(uncertainty, 1)
+        dst.update_tags(
+            values="0=low predictive entropy,1=high predictive entropy,-1=nodata",
+            source="normalized_binary_predictive_entropy",
+            calibration="physics_calibrated_sar_proxy",
+            decision_status="RESEARCH_ONLY_NOT_OPERATIONALLY_VALIDATED",
+            requires_human_review="true",
+        )
+
+    uncertainty_values = uncertainty[valid_mask]
+    facts_uncertainty = {
+        "raster": str(uncertainty_path),
+        "method": "normalized binary predictive entropy",
+        "calibrated": False,
+        "mean": float(np.mean(uncertainty_values)) if uncertainty_values.size else None,
+        "fraction_at_least_0_5": float(np.mean(uncertainty_values >= 0.5)) if uncertainty_values.size else None,
+        "interpretation": "High values indicate ambiguity near decision boundaries; low values indicate distinct radar return.",
+    }
+
+    dummy_ckpt = {
+        "model_config": {"model": "physics_sar_dualpol_heuristic", "classes": 2, "base_channels": 24},
+        "normalization": {"type": "direct_db"},
+        "checkpoint_sha256": "physics_heuristic_no_weights",
+        "epoch": 0,
+    }
+    facts = compute_facts(pred_mask, transform, crs, Path("sar_physics_detector"), dummy_ckpt)
+    facts["anti_hallucination_metrics"] = h_stats
+    facts["uncertainty"] = facts_uncertainty
+    facts["prediction_mode"] = "physics_calibrated_sar_dualpol_with_slope_gate"
+
+    facts_path = out_dir / f"{scene_path.stem}_facts.json"
+    with open(facts_path, "w", encoding="utf-8") as f:
+        json.dump(facts, f, indent=2)
+    print(f"    [OK] facts.json -> {facts_path}")
+    return facts
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------

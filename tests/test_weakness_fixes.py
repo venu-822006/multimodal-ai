@@ -208,3 +208,43 @@ def test_dem_slope_gradient():
     slope = compute_slope_from_dem(dem, cell_size_m=30.0)
     interior_slope = slope[1:-1, 1:-1]
     assert np.all(interior_slope >= 5.0) and np.all(interior_slope <= 6.5)
+
+
+def test_evaluate_filters_comparison():
+    """Verify before/after anti-hallucination filter evaluation calculations."""
+    from evaluate_filters import generate_filter_comparison
+    res = generate_filter_comparison()
+    assert "metrics_comparison" in res
+    asm = res["metrics_comparison"]["all_scene_macro"]
+    assert asm["iou"]["filtered"] > asm["iou"]["baseline"]
+    assert asm["f1"]["filtered"] > asm["f1"]["baseline"]
+    zfa = res["metrics_comparison"]["zero_flood_false_alarms"]
+    assert zfa["clean_scenes_pct"]["filtered"] > zfa["clean_scenes_pct"]["baseline"]
+    assert zfa["scenes_with_false_positives"]["eliminated_fp_scenes"] > 0
+
+
+def test_same_orbit_enforcement_raises():
+    """Verify cross-orbit pairs are strictly rejected without silent fallback."""
+    import pytest
+    from unittest.mock import MagicMock, patch
+    from datetime import date
+
+    mock_pre = MagicMock()
+    mock_pre.datetime.date.return_value = date(2024, 6, 25)
+    mock_pre.properties = {"sat:relative_orbit": 41, "sat:orbit_state": "ascending"}
+    
+    mock_post = MagicMock()
+    mock_post.datetime.date.return_value = date(2024, 7, 5)
+    # Different orbit!
+    mock_post.properties = {"sat:relative_orbit": 99, "sat:orbit_state": "descending"}
+
+    with patch("pystac_client.Client.open") as mock_client_open:
+        mock_client = MagicMock()
+        mock_client_open.return_value = mock_client
+        mock_search = MagicMock()
+        mock_search.items.return_value = [mock_pre, mock_post]
+        mock_client.search.return_value = mock_search
+
+        from download_scenes import discover_and_download
+        with pytest.raises(RuntimeError, match="none share a matching relative orbit"):
+            discover_and_download([91.5, 26.0, 91.6, 26.1], "2024-07-01", "outputs/test_orbit_fail")

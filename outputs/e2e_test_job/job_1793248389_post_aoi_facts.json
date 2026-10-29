@@ -1,0 +1,52 @@
+{
+  "flood_area_km2": 4.92844,
+  "flood_pixel_count": 13705,
+  "total_valid_pixels": 77284,
+  "flood_fraction": 0.177333,
+  "bbox": [
+    91.5,
+    26.0,
+    91.55,
+    26.05
+  ],
+  "crs": "EPSG:4326",
+  "bbox_crs": "EPSG:4326",
+  "pixel_area_m2": 359.61,
+  "pixel_resolution_approx_m": 18.96,
+  "spatial_measurement_available": true,
+  "spatial_measurement_unavailable_reason": null,
+  "model_config": {
+    "model": "physics_sar_dualpol_heuristic",
+    "classes": 2,
+    "base_channels": 24
+  },
+  "normalization": {
+    "type": "direct_db"
+  },
+  "checkpoint": "sar_physics_detector",
+  "checkpoint_sha256": "physics_heuristic_no_weights",
+  "decision_status": "RESEARCH_ONLY_NOT_OPERATIONALLY_VALIDATED",
+  "requires_human_review": true,
+  "decision_use": "informational mapping only; verify against independent geospatial evidence",
+  "val_flood_iou": null,
+  "epoch": 0,
+  "anti_hallucination_metrics": {
+    "confidence_threshold_used": 0.5,
+    "min_cluster_px_used": 10,
+    "raw_candidates": 14603,
+    "slope_hallucinations_filtered": 77,
+    "temporal_false_positives_filtered": 8,
+    "speckle_noise_pixels_filtered": 813,
+    "retained_flood_candidate_pixels": 13705,
+    "noise_reduction_pct": 6.1
+  },
+  "uncertainty": {
+    "raster": "multimodal-ai\\outputs\\e2e_test_job\\job_1793248389_post_aoi_uncertainty.tif",
+    "method": "normalized binary predictive entropy",
+    "calibrated": false,
+    "mean": 0.3743402361869812,
+    "fraction_at_least_0_5": 0.3288002691372082,
+    "interpretation": "High values indicate ambiguity near decision boundaries; low values indicate distinct radar return."
+  },
+  "prediction_mode": "physics_calibrated_sar_dualpol_with_slope_gate"
+}

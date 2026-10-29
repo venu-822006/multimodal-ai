@@ -65,7 +65,6 @@ def export_uncertainty_overlay(uncertainty_path: Path | None, out_png: Path):
     """Write a transparent red overlay for normalized predictive entropy."""
     if uncertainty_path is None or not Path(uncertainty_path).is_file():
         return None
-    import cv2
 
     with rasterio.open(uncertainty_path) as src:
         if src.count != 1 or src.crs is None:
@@ -83,14 +82,26 @@ def export_uncertainty_overlay(uncertainty_path: Path | None, out_png: Path):
     rgba[..., 3] = np.where(valid, np.clip(values, 0.0, 1.0) * 190, 0).astype(np.uint8)
     max_dimension = 2000
     scale = min(1.0, max_dimension / max(values.shape))
-    if scale < 1.0:
-        width = max(1, int(values.shape[1] * scale))
-        height = max(1, int(values.shape[0] * scale))
-        rgba = cv2.resize(rgba, (width, height), interpolation=cv2.INTER_LINEAR)
-    bgra = cv2.cvtColor(rgba, cv2.COLOR_RGBA2BGRA)
     out_png.parent.mkdir(parents=True, exist_ok=True)
-    if not cv2.imwrite(str(out_png), bgra):
-        raise RuntimeError(f"Could not write uncertainty overlay: {out_png}")
+
+    try:
+        from PIL import Image
+        img = Image.fromarray(rgba, mode="RGBA")
+        if scale < 1.0:
+            width = max(1, int(values.shape[1] * scale))
+            height = max(1, int(values.shape[0] * scale))
+            img = img.resize((width, height), resample=Image.Resampling.BILINEAR if hasattr(Image, "Resampling") else Image.BILINEAR)
+        img.save(out_png)
+    except ImportError:
+        import cv2
+        if scale < 1.0:
+            width = max(1, int(values.shape[1] * scale))
+            height = max(1, int(values.shape[0] * scale))
+            rgba = cv2.resize(rgba, (width, height), interpolation=cv2.INTER_LINEAR)
+        bgra = cv2.cvtColor(rgba, cv2.COLOR_RGBA2BGRA)
+        if not cv2.imwrite(str(out_png), bgra):
+            raise RuntimeError(f"Could not write uncertainty overlay: {out_png}")
+
     west, south, east, north = bounds
     return [[south, west], [north, east]]
 
