@@ -41,7 +41,7 @@
     "noise_reduction_pct": 6.1
   },
   "uncertainty": {
-    "raster": "multimodal-ai\\outputs\\e2e_test_job\\job_1793248389_post_aoi_uncertainty.tif",
+    "raster": "multimodal-ai\\outputs\\e2e_test_job\\job_1793249664_post_aoi_uncertainty.tif",
     "method": "normalized binary predictive entropy",
     "calibrated": false,
     "mean": 0.3743402361869812,
@@ -55,9 +55,9 @@
     "total_valid_pixels": 77284,
     "debris_heuristic_score": 0.0,
     "debris_confidence_score": 0.0,
-    "method": "Multi-modal classification (bimodal_sar_terrain)",
+    "method": "Multi-modal classification (multimodal_sar_optical_terrain)",
     "minimum_backscatter_increase_db": 1.5,
-    "optical_used": false,
+    "optical_used": true,
     "slope_used": true,
     "classes": {
       "0": "Background",
@@ -69,8 +69,21 @@
   "debris_area_km2": 0.0,
   "debris_heuristic_score": 0.0,
   "cross_sensor_optical": {
-    "status": "not_available",
-    "note": "No real Sentinel-2 bands were supplied; no optical confirmation was used."
+    "ndwi_raster": "multimodal-ai\\outputs\\e2e_test_job\\optical\\s2_green_ndwi.tif",
+    "mean_ndwi": -0.2119,
+    "cloud_candidate_fraction_of_valid_pixels": 0.0121,
+    "invalid_optical_fraction": 0.0,
+    "cloud_mask_method": "Green/NIR reflectance threshold proxy; no SCL cloud/shadow band was supplied",
+    "interpretation": "Optical threshold comparison is supporting evidence only and does not calibrate the SAR model.",
+    "cross_sensor_validation": {
+      "clear_sky_valid_pixels": 76350,
+      "dual_confirmed_water_pixels": 0,
+      "radar_only_water_pixels": 13592,
+      "optical_only_water_pixels": 2,
+      "cross_sensor_agreement_pct": 0.0,
+      "agreement_level": "LOW",
+      "interpretation": "Agreement describes overlap of two thresholded masks; it is not calibrated model confidence."
+    }
   },
   "buildings_affected": 1,
   "buildings_affected_confidence": null,
@@ -251,8 +264,8 @@
   },
   "input_provenance": {
     "sentinel1": {
-      "pre_raster": "job_1793248389_pre_aoi.tif",
-      "post_raster": "job_1793248389_post_aoi.tif",
+      "pre_raster": "job_1793249664_pre_aoi.tif",
+      "post_raster": "job_1793249664_post_aoi.tif",
       "source": "caller-supplied analysis-ready rasters; file identity and provider product records are not verified against STAC"
     },
     "sentinel1_pairing": {
@@ -324,23 +337,23 @@
       "rasters": [
         {
           "role": "pre",
-          "filename": "job_1793248389_pre_aoi.tif",
+          "filename": "job_1793249664_pre_aoi.tif",
           "relative_orbit": "41",
-          "orbit_direction": null,
-          "acquisition_datetime": null
+          "orbit_direction": "ascending",
+          "acquisition_datetime": "2024-06-29T11:57:28.677188+00:00"
         },
         {
           "role": "post",
-          "filename": "job_1793248389_post_aoi.tif",
+          "filename": "job_1793249664_post_aoi.tif",
           "relative_orbit": "41",
-          "orbit_direction": null,
-          "acquisition_datetime": null
+          "orbit_direction": "ascending",
+          "acquisition_datetime": "2024-07-11T11:57:28.343272+00:00"
         }
       ],
-      "same_orbit_verified_from_tags": false,
-      "event_order_verified_from_tags": false,
-      "operator_must_verify_pair_when_tags_missing": true,
-      "stac_orbit_consistency": "not_checkable_input_orbit_tags_missing"
+      "same_orbit_verified_from_tags": true,
+      "event_order_verified_from_tags": true,
+      "operator_must_verify_pair_when_tags_missing": false,
+      "stac_orbit_consistency": "input_tags_match_selected_relative_orbit_and_direction"
     },
     "osm": {
       "provider": "ohsome API",

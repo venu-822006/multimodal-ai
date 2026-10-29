@@ -232,11 +232,11 @@ def test_same_orbit_enforcement_raises():
     mock_pre = MagicMock()
     mock_pre.datetime.date.return_value = date(2024, 6, 25)
     mock_pre.properties = {"sat:relative_orbit": 41, "sat:orbit_state": "ascending"}
-    
+
     mock_post = MagicMock()
     mock_post.datetime.date.return_value = date(2024, 7, 5)
     # Different orbit!
-    mock_post.properties = {"sat:relative_orbit": 99, "sat:orbit_state": "descending"}
+    mock_post.properties = {"sat:relative_orbit": 99, "sat:orbit_state": "ascending"}
 
     with patch("pystac_client.Client.open") as mock_client_open:
         mock_client = MagicMock()
@@ -246,5 +246,108 @@ def test_same_orbit_enforcement_raises():
         mock_client.search.return_value = mock_search
 
         from download_scenes import discover_and_download
-        with pytest.raises(RuntimeError, match="none share a matching relative orbit"):
+        with pytest.raises(RuntimeError, match="none share both a matching relative orbit and matching flight direction"):
             discover_and_download([91.5, 26.0, 91.6, 26.1], "2024-07-01", "outputs/test_orbit_fail")
+
+
+def test_same_orbit_different_flight_direction_raises():
+    """Verify matching relative orbit with opposing flight directions is rejected."""
+    import pytest
+    from unittest.mock import MagicMock, patch
+    from datetime import date
+
+    mock_pre = MagicMock()
+    mock_pre.datetime.date.return_value = date(2024, 6, 25)
+    # Same orbit 41, but Ascending pass
+    mock_pre.properties = {"sat:relative_orbit": 41, "sat:orbit_state": "ascending"}
+
+    mock_post = MagicMock()
+    mock_post.datetime.date.return_value = date(2024, 7, 5)
+    # Same orbit 41, but Descending pass!
+    mock_post.properties = {"sat:relative_orbit": 41, "sat:orbit_state": "descending"}
+
+    with patch("pystac_client.Client.open") as mock_client_open:
+        mock_client = MagicMock()
+        mock_client_open.return_value = mock_client
+        mock_search = MagicMock()
+        mock_search.items.return_value = [mock_pre, mock_post]
+        mock_client.search.return_value = mock_search
+
+        from download_scenes import discover_and_download
+        with pytest.raises(RuntimeError, match="none share both a matching relative orbit and matching flight direction"):
+            discover_and_download([91.5, 26.0, 91.6, 26.1], "2024-07-01", "outputs/test_dir_fail")
+
+
+def test_optical_and_sar_same_orbit_direction_manifest_structure(tmp_path):
+    """Verify pairing succeeds and writes direction and optical fields when matching."""
+    from unittest.mock import MagicMock, patch
+    from datetime import date
+
+    mock_pre = MagicMock()
+    mock_pre.id = "S1A_IW_GRDH_PRE"
+    mock_pre.datetime.date.return_value = date(2024, 6, 25)
+    mock_pre.properties = {"sat:relative_orbit": 41, "sat:orbit_state": "descending", "platform": "sentinel-1a"}
+
+    mock_post = MagicMock()
+    mock_post.id = "S1A_IW_GRDH_POST"
+    mock_post.datetime.date.return_value = date(2024, 7, 5)
+    mock_post.properties = {"sat:relative_orbit": 41, "sat:orbit_state": "descending", "platform": "sentinel-1a"}
+
+    with patch("pystac_client.Client.open") as mock_client_open, \
+         patch("planetary_computer.sign") as mock_pc_sign, \
+         patch("rasterio.open") as mock_rio_open, \
+         patch("download_scenes.reproject") as mock_reproject:
+
+        mock_client = MagicMock()
+        mock_client_open.return_value = mock_client
+        
+        mock_s1_search = MagicMock()
+        mock_s1_search.items.return_value = [mock_pre, mock_post]
+
+        mock_s2 = MagicMock()
+        mock_s2.id = "S2A_MSIL2A_TEST"
+        mock_s2.datetime.date.return_value = date(2024, 6, 28)
+        mock_s2.properties = {"eo:cloud_cover": 12.5}
+
+        mock_s2_search = MagicMock()
+        mock_s2_search.items.return_value = [mock_s2]
+
+        mock_dem = MagicMock()
+        mock_dem.id = "COP30_DEM_TEST"
+        mock_dem_search = MagicMock()
+        mock_dem_search.items.return_value = [mock_dem]
+
+        mock_client.search.side_effect = [mock_s1_search, mock_s2_search, mock_dem_search]
+
+        signed_item = MagicMock()
+        signed_item.assets = {
+            "vv": MagicMock(href="http://example.com/vv.tif"),
+            "vh": MagicMock(href="http://example.com/vh.tif"),
+            "B03": MagicMock(href="http://example.com/b03.tif"),
+            "B08": MagicMock(href="http://example.com/b08.tif"),
+            "data": MagicMock(href="http://example.com/dem.tif"),
+        }
+        mock_pc_sign.return_value = signed_item
+
+        mock_src = MagicMock()
+        mock_src.read.return_value = np.zeros((64, 64), dtype=np.float32)
+        mock_src.transform = MagicMock()
+        mock_src.crs = "EPSG:4326"
+        mock_src.dtypes = ("float32", "float32")
+        mock_src.shape = (64, 64)
+        mock_rio_open.return_value.__enter__.return_value = mock_src
+
+        from download_scenes import discover_and_download
+        out_dir = tmp_path / "scenes"
+        manifest = discover_and_download([91.5, 26.0, 91.55, 26.05], "2024-07-01", out_dir)
+
+        assert manifest["status"] == "success"
+        assert manifest["pre_event"]["orbit"] == 41
+        assert manifest["pre_event"]["direction"] == "descending"
+        assert manifest["post_event"]["orbit"] == 41
+        assert manifest["post_event"]["direction"] == "descending"
+        assert manifest["optical"] is not None
+        assert manifest["optical"]["item_id"] == "S2A_MSIL2A_TEST"
+        assert manifest["optical"]["cloud_cover"] == 12.5
+        assert manifest["dem"] is not None
+        assert manifest["dem"]["item_id"] == "COP30_DEM_TEST"

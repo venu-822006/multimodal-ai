@@ -105,8 +105,18 @@ def discover_and_download(
         dt = item.datetime.date() if item.datetime else None
         if not dt:
             continue
-        rel_orbit = item.properties.get("sat:relative_orbit")
-        direction = item.properties.get("sat:orbit_state")
+        rel_orbit = (
+            item.properties.get("sat:relative_orbit")
+            or item.properties.get("relative_orbit")
+            or item.properties.get("s1:relative_orbit_number")
+        )
+        raw_direction = (
+            item.properties.get("sat:orbit_state")
+            or item.properties.get("orbit_state")
+            or item.properties.get("sar:orbit_state")
+            or item.properties.get("s1:orbit_direction")
+        )
+        direction = str(raw_direction).strip().lower() if raw_direction else None
         record = {
             "item": item,
             "id": item.id,
@@ -120,12 +130,22 @@ def discover_and_download(
         else:
             post_items.append(record)
 
-    # Find matching same-orbit pair
+    # Find matching pair: MUST strictly match BOTH same relative orbit AND same flight direction
     selected_pre = None
     selected_post = None
     for post in sorted(post_items, key=lambda x: abs((x["date"] - f_date).days)):
         for pre in sorted(pre_items, key=lambda x: abs((f_date - x["date"]).days)):
-            if post["orbit"] and pre["orbit"] and post["orbit"] == pre["orbit"]:
+            orbit_match = (
+                post["orbit"] is not None
+                and pre["orbit"] is not None
+                and int(post["orbit"]) == int(pre["orbit"])
+            )
+            direction_match = (
+                bool(post["direction"])
+                and bool(pre["direction"])
+                and post["direction"].lower() == pre["direction"].lower()
+            )
+            if orbit_match and direction_match:
                 selected_pre = pre
                 selected_post = post
                 break
@@ -135,16 +155,16 @@ def discover_and_download(
     if not selected_post or not selected_pre:
         orbit_info = (
             f"Found {len(pre_items)} pre-event and {len(post_items)} post-event Sentinel-1 RTC items, "
-            f"but none share a matching relative orbit and flight direction. "
-            f"Same-orbit pairing is required for coherent SAR change detection. "
+            f"but none share both a matching relative orbit and matching flight direction (ascending/descending). "
+            f"Strict same-orbit and same-direction pairing is required for coherent SAR change detection. "
             f"Expand the temporal window (--lookback-days / --lookahead-days), verify the target "
             f"bounding box has Sentinel-1 coverage, or supply pre-processed same-orbit rasters "
             f"via --pre-image and --post-image."
         )
         raise RuntimeError(orbit_info)
 
-    print(f"[STAC] Selected Pre-event:  {selected_pre['id']} ({selected_pre['date']}) Orbit: {selected_pre['orbit']}")
-    print(f"[STAC] Selected Post-event: {selected_post['id']} ({selected_post['date']}) Orbit: {selected_post['orbit']}")
+    print(f"[STAC] Selected Pre-event:  {selected_pre['id']} ({selected_pre['date']}) Orbit: {selected_pre['orbit']} Direction: {selected_pre['direction']}")
+    print(f"[STAC] Selected Post-event: {selected_post['id']} ({selected_post['date']}) Orbit: {selected_post['orbit']} Direction: {selected_post['direction']}")
 
     # Setup target raster grid (EPSG:4326)
     west, south, east, north = bbox
@@ -204,7 +224,14 @@ def discover_and_download(
                 platform=item_record["item"].properties.get("platform", "sentinel-1"),
                 item_id=item_record["id"],
                 acquisition_date=str(item_record["date"]),
-                relative_orbit=str(item_record["orbit"]),
+                acquisition_datetime=(
+                    item_record["item"].datetime.isoformat()
+                    if item_record["item"].datetime
+                    else str(item_record["date"])
+                ),
+                relative_orbit=str(item_record["orbit"]) if item_record["orbit"] is not None else "",
+                orbit_direction=str(item_record["direction"]) if item_record["direction"] else "",
+                sat_orbit_state=str(item_record["direction"]) if item_record["direction"] else "",
             )
         print(f"[STAC] Saved analysis-ready SAR GeoTIFF: {output_file}")
         return output_file
@@ -222,39 +249,45 @@ def discover_and_download(
         "pre_event": {
             "item_id": selected_pre["id"],
             "date": str(selected_pre["date"]),
-            "orbit": selected_pre["orbit"],
+            "orbit": int(selected_pre["orbit"]) if selected_pre["orbit"] is not None else None,
+            "direction": selected_pre["direction"],
             "file": str(pre_file.resolve()),
         },
         "post_event": {
             "item_id": selected_post["id"],
             "date": str(selected_post["date"]),
-            "orbit": selected_post["orbit"],
+            "orbit": int(selected_post["orbit"]) if selected_post["orbit"] is not None else None,
+            "direction": selected_post["direction"],
             "file": str(post_file.resolve()),
         },
         "optical": None,
     }
 
-    # 2. Optional Sentinel-2 Optical Download
+    # 2. Sentinel-2 Optical Download (Adaptive cloud-cover search)
     if download_optical:
-        print("[STAC] Searching Sentinel-2 L2A optical scenes (cloud < 30%)...")
+        print("[STAC] Searching Sentinel-2 L2A optical scenes...")
+        opt_start = f_date - timedelta(days=lookback_days)
+        opt_end = f_date + timedelta(days=lookahead_days)
         try:
             s2_search = client.search(
                 collections=["sentinel-2-l2a"],
                 bbox=bbox,
-                datetime=f"{f_date.isoformat()}/{(f_date + timedelta(days=14)).isoformat()}",
-                query={"eo:cloud_cover": {"lt": 30.0}},
-                max_items=10,
+                datetime=f"{opt_start.isoformat()}/{opt_end.isoformat()}",
+                max_items=30,
             )
             s2_items = list(s2_search.items())
             if s2_items:
-                best_s2 = sorted(s2_items, key=lambda x: x.properties.get("eo:cloud_cover", 100.0))[0]
+                # Rank scenes by cloud cover
+                best_s2 = min(s2_items, key=lambda x: float(x.properties.get("eo:cloud_cover", 100.0)))
+                best_cloud = float(best_s2.properties.get("eo:cloud_cover", 100.0))
+                print(f"[STAC] Selected best Sentinel-2 scene: {best_s2.id} ({best_s2.datetime.date() if best_s2.datetime else 'N/A'}) with cloud cover {best_cloud:.1f}%")
                 signed_s2 = pc.sign(best_s2)
-                b03 = signed_s2.assets.get("B03")
-                b08 = signed_s2.assets.get("B08")
+                b03 = signed_s2.assets.get("B03") or signed_s2.assets.get("b03")
+                b08 = signed_s2.assets.get("B08") or signed_s2.assets.get("b08")
                 if b03 and b08:
                     green_file = out_path / "s2_green.tif"
                     nir_file = out_path / "s2_nir.tif"
-                    for asset, out_f in [(b03, green_file), (b08, nir_file)]:
+                    for asset, out_f, band_name in [(b03, green_file, "B03_Green"), (b08, nir_file, "B08_NIR")]:
                         with rasterio.open(asset.href) as src:
                             dest = np.zeros((height, width), dtype=np.float32)
                             reproject(
@@ -272,14 +305,22 @@ def discover_and_download(
                                 out_f, "w", driver="GTiff", height=height, width=width, count=1, dtype="float32", crs=target_crs, transform=transform
                             ) as dst:
                                 dst.write(dest, 1)
+                                dst.set_band_description(1, band_name)
+                                dst.update_tags(
+                                    source_id=best_s2.id,
+                                    cloud_cover=str(best_cloud),
+                                    acquisition_date=str(best_s2.datetime.date() if best_s2.datetime else f_date),
+                                )
                     manifest["optical"] = {
                         "item_id": best_s2.id,
                         "date": str(best_s2.datetime.date() if best_s2.datetime else f_date),
-                        "cloud_cover": best_s2.properties.get("eo:cloud_cover"),
+                        "cloud_cover": best_cloud,
                         "green_file": str(green_file.resolve()),
                         "nir_file": str(nir_file.resolve()),
                     }
-                    print(f"[STAC] Saved clear-sky Sentinel-2 optical bands: {best_s2.id}")
+                    print(f"[STAC] Successfully saved Sentinel-2 optical bands: Green -> {green_file.name}, NIR -> {nir_file.name}")
+            else:
+                print(f"[STAC] No Sentinel-2 L2A scenes found in window {opt_start} to {opt_end}.")
         except Exception as e:
             print(f"[STAC] Optical download skipped or unavailable: {e}")
 
@@ -336,6 +377,8 @@ def main():
     parser.add_argument("--bbox", nargs=4, type=float, required=True, metavar=("WEST", "SOUTH", "EAST", "NORTH"))
     parser.add_argument("--flood-date", type=str, required=True, help="Event date YYYY-MM-DD")
     parser.add_argument("--out-dir", type=str, default="data/scenes", help="Output directory")
+    parser.add_argument("--lookback-days", type=int, default=15, help="Days to search before flood date (default: 15)")
+    parser.add_argument("--lookahead-days", type=int, default=15, help="Days to search after flood date (default: 15)")
     parser.add_argument("--no-optical", action="store_true", help="Skip optical Sentinel-2 download")
     args = parser.parse_args()
 
@@ -343,6 +386,8 @@ def main():
         bbox=args.bbox,
         flood_date=args.flood_date,
         out_dir=args.out_dir,
+        lookback_days=args.lookback_days,
+        lookahead_days=args.lookahead_days,
         download_optical=not args.no_optical,
     )
 

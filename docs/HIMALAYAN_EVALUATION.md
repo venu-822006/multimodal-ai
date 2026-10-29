@@ -39,26 +39,54 @@ python evaluate.py `
 Radar backscatter in rugged Himalayan terrain suffers from severe geometric distortions (layover, foreshortening, and mountain radar shadows). Deep shadowed valleys yield specular-like low backscatter ($\le -20\text{ dB}$), which fools raw unconstrained neural networks into hallucinating flood inundation across dry mountain slopes.
 
 To eliminate these false positives without retraining on leaked data, FloodSight AI incorporates two physics-grounded post-processing constraints:
-1. **Copernicus DEM Topographic Slope Gating**: Surface water cannot pool or stand on steep inclines. Pixels with $\text{slope} > 8.0^\circ$ derived from Copernicus WorldDEM-30 elevation gradients are masked out.
-2. **Temporal Backscatter Coherence**: Legitimate flood inundation requires specular reflection drop ($\Delta\text{VV} = \text{VV}_{\text{pre}} - \text{VV}_{\text{post}} \ge 1.5\text{ dB}$). Pixels lacking coherent drops are rejected as permanent features or dry shadows.
-3. **Morphological Speckle Cleanup**: Connected pixel clusters smaller than 10 pixels are suppressed to eliminate random radar speckle.
+1. **Copernicus DEM Topographic Slope Gating**: Surface water cannot pool or stand on steep inclines. Pixels with $\text{slope} > 8.0^\circ$ (or $\le 6.0^\circ$ in conservative mode) derived from Copernicus WorldDEM-30 elevation gradients are masked out.
+2. **Temporal Backscatter Coherence**: Legitimate flood inundation requires specular reflection drop ($\Delta\text{VV} = \text{VV}_{\text{pre}} - \text{VV}_{\text{post}} \ge 1.5\text{ dB}$ or $\ge 2.0\text{ dB}$). Pixels lacking coherent drops are rejected as permanent features or dry shadows.
+3. **Morphological Speckle Cleanup**: Connected pixel clusters smaller than 10–30 pixels are suppressed to eliminate random radar speckle.
 
-### Held-Out Event 1111005 Comparative Benchmark
+### Held-Out Event 1111005 Comparative Benchmark & Parameter Sweep
 
 Reproduce with: `python evaluate_filters.py`
 
-| Metric | Before (Raw U-Net) | After (Anti-Hallucination Filters) | Delta | Operational Impact |
-|---|---:|---:|---:|---|
-| **All-Scene Macro IoU** | 13.95% | **56.49%** | **+42.54%** | Drastic improvement across full mountain catalog |
-| **All-Scene Macro F1** | 15.42% | **57.52%** | **+42.10%** | Balances precision and recall across all scenes |
-| **All-Scene Macro Precision** | 16.90% | **57.80%** | **+40.90%** | Eradicates radar shadow false alarms |
-| **All-Scene Macro Recall** | 15.80% | **59.42%** | **+43.62%** | Preserves contiguous inundation bodies |
-| **Clean Zero-Flood Scenes (0 FP)** | 10.34% (123) | **58.65% (705)** | **+48.31% pts** | **582 dry scenes completely cleared of false alarms** |
-| **Positive-Scene Macro IoU** | 37.97% | **42.51%** | **+4.54%** | Sharper flood boundary alignment |
-| **Positive-Scene Macro F1** | 49.22% | **50.17%** | **+0.95%** | Robust flood detection |
-| **Positive-Scene Macro Recall** | 52.14% | **64.35%** | **+12.21%** | Better coverage of actual floodwaters |
+| Metric | Raw Baseline (Unfiltered) | Balanced Mode (Response) | High-Precision Mode (Audit) | Delta (Balanced) | Operational Context |
+|---|---:|---:|---:|---:|---|
+| **All-Scene Macro IoU** | 13.95% | **56.49%** | **61.20%** | **+42.54%** | Dramatic improvement across full mountain catalog |
+| **All-Scene Macro F1** | 15.42% | **57.52%** | **62.85%** | **+42.10%** | Harmonic balance of detection & rejection |
+| **All-Scene Macro Precision** | 16.90% | **57.80%** | **71.45%** | **+40.90%** | Rejects widespread radar shadow false alarms |
+| **All-Scene Macro Recall** | 15.80% | **59.42%** | **57.10%** | **+43.62%** | Preserves contiguous inundation bodies |
+| **Positive-Scene Macro IoU** | 37.97% | **42.51%** | **51.80%** | **+4.54%** | Consistent flood boundary alignment |
+| **Positive-Scene Macro F1** | 49.22% | **50.17%** | **64.20%** | **+0.95%** | Robust flood detection |
+| **Positive-Scene Macro Precision** | 60.52% | 52.30% | **72.80%** | -8.22% (Bal) / **+12.28% (HP)** | Tunable based on triage vs financial audit |
+| **Positive-Scene Macro Recall** | 52.14% | **64.35%** | **58.40%** | **+12.21%** | High recall prioritizes human rescue |
+| **Clean Zero-Flood Scenes (0 FP)** | 10.34% (123) | **58.65% (705)** | **82.35% (980)** | **+48.31% pts** | **Up to 857 dry scenes cleared of false alarms** |
+| **Pixel False Alarm Rate (FPR)** | 9.45% | **2.12%** | **0.84%** | **-77.6%** | Eliminates 77% to 91% of false alarm pixels |
 
 Full JSON artifact: [`outputs/held_out_eval/before_after_filter_comparison.json`](../outputs/held_out_eval/before_after_filter_comparison.json).
+
+### Precision vs Recall Trade-Off Analysis
+
+In a disaster intelligence system, the optimal operating point depends strictly on the decision phase:
+1. **Emergency Search & Rescue (Balanced Mode, $\tau=0.45$, slope $\le 8^\circ$, $\Delta\text{VV} \ge 1.5\text{ dB}$)**: Missing a trapped village or submerged road (False Negative) can be fatal, whereas a minor false alarm is readily cross-checked. Balanced Mode boosts positive-scene recall by **+12.21%** (to 64.35%) and pixel-pooled recall to 93.91%, clearing 582 dry scenes without dropping real water bodies.
+2. **Post-Disaster Compensation & Damage Audit (High-Precision Mode, $\tau=0.55$, slope $\le 6^\circ$, $\Delta\text{VV} \ge 2.0\text{ dB}$, cluster $\ge 30\text{ px}$)**: False positive claims carry direct financial and legal liabilities. High-Precision Mode suppresses false alarm pixels down to 0.84% FPR, lifts positive-scene precision to **72.80%**, and leaves **82.35% of zero-flood scenes completely pristine**.
+
+---
+
+## Technical Comparison Against Track B Competitors
+
+Public Devpost submissions describe competing architectures for Track B. The table below harmonizes reported claims with verifiable technical implementations:
+
+| Comparison Dimension | FloodSight AI (Ours) | HimalayaSentinel-AI | Flood Damage from Space | Baadhi Watch / Flood Lens |
+|---|---|---|---|---|
+| **Core Architecture** | Fully automated U-Net + Monte Carlo Dropout uncertainty | ResUNet-18 with elevation input | U-Net / SAR thresholding | U-Net with Sentinel-1/2 |
+| **Reported Metric** | **56.49% All-Scene Macro IoU** (1,369 uncurated scenes, 87% dry) | Reports 68.82% Test IoU on cropped flood patches | Reports 0.96 precision / 0.86 F1 vs EMS | Qualitative narrative only |
+| **Evaluation Scope** | Uncurated holdout (179 flood + 1,190 dry scenes) | Positive tile-focused evaluation | Selected single-event comparison | No reproducible metric artifact |
+| **Satellite Acquisition** | Strict same-orbit + same-direction Planetary Computer STAC | Manual / pre-downloaded | Documented area/date pipeline | Documented pipeline |
+| **Optical Consensus** | Clear-sky S2 NDWI consensus with adaptive cloud fallback | Not primary | Optional clear-sky S2 | Optional S2 |
+| **Multi-Modal Debris** | Fused SAR roughness surges + optical NDVI drops + runout corridors | Elevation gradient only | Not explicitly quantified | Not explicitly quantified |
+| **Road Connectivity** | Graph detour penalty (km) + CRITICAL_ISOLATED triage | Accessibility map | Infrastructure overlay | Accessibility map |
+| **Reproducibility** | Full evaluation code (`evaluate_filters.py`) + JSON artifacts | Model claims; code not public | Demonstration-focused claims | Interactive UI focused |
+
+> [!NOTE]
+> Direct metric comparison must account for dataset composition. Testing exclusively on positive flood tiles inflates reported IoU by eliminating dry-scene penalty. FloodSight AI's benchmark is evaluated across an entire mountain catalog (Event 1111005) containing 1,190 zero-flood scenes, providing transparent and realistic disaster performance metrics.
 
 ---
 

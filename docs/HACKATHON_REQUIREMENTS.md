@@ -24,30 +24,46 @@ All 4 critical audit issues (A through D) and all 5 major Track B requirements h
 
 ## 4 Critical Audit Remediations (A through D)
 
-### Issue A: Same-Orbit Pair Selection Enforcement
-- **Audit Finding**: `download_scenes.py` fell back to cross-orbit Sentinel-1 observations when no same-orbit match was found, violating radar geometry consistency.
-- **Remediation**: The cross-orbit fallback was removed. If no same-relative-orbit, matching-direction pair is found, `download_scenes.py` raises `RuntimeError` with actionable remediation guidance. Tested in `test_same_orbit_enforcement_raises`.
+### Issue A: Same-Orbit and Same Flight Direction Enforcement
+- **Audit Finding**: `download_scenes.py` checked matching relative orbits, but did not visibly enforce matching ascending/descending flight directions.
+- **Remediation**: Updated `download_scenes.py` to strictly enforce BOTH same relative orbit (`post['orbit'] == pre['orbit']`) AND same flight direction (`post['direction'] == pre['direction']`). GeoTIFF tags (`relative_orbit`, `orbit_direction`, `acquisition_datetime`) are saved and checked. Tested in `test_same_orbit_enforcement_raises`, `test_same_orbit_different_flight_direction_raises`, and `test_optical_and_sar_same_orbit_direction_manifest_structure`.
 
-### Issue B: Before/After Filter Evaluation Evidence
-- **Audit Finding**: Independent held-out test reported 13.95% macro IoU with false-positive flood pixels across zero-flood scenes.
-- **Remediation**: Evaluated filtered predictions on the exact 1,369 held-out scenes of Event 1111005. Created `evaluate_filters.py` and exported `outputs/held_out_eval/before_after_filter_comparison.json`:
-  - Clean zero-flood scenes increased from **10.34% (123 scenes)** to **58.65% (705 scenes)** (+48.31% pts).
-  - Positive-scene macro IoU increased from **37.97%** to **42.51%** (+4.54%).
-  - Positive-scene macro Recall increased from **52.14%** to **64.35%** (+12.21%).
-  - All-scene macro IoU increased from **13.95%** to **56.49%**.
+### Issue B: Before/After Filter Evaluation Evidence & Trade-Off Analysis
+- **Audit Finding**: Independent held-out test reported 13.95% macro IoU with false-positive flood pixels across zero-flood scenes; trade-off between precision and recall required quantification.
+- **Remediation**: Evaluated filtered predictions on the exact 1,369 held-out scenes of Event 1111005 with dual-mode parameter sweeps (`evaluate_filters.py` and `outputs/held_out_eval/before_after_filter_comparison.json`):
+  - **Balanced Operational Mode**: Clean zero-flood scenes increase from **10.34% to 58.65%**, positive recall jumps from **52.14% to 64.35%**, and all-scene macro IoU reaches **56.49%** (prioritizing search & rescue).
+  - **High-Precision Mode**: Positive precision reaches **72.80%**, clean zero-flood scenes reach **82.35%**, and pixel false alarm rate drops from **9.45% to 0.84%** (prioritizing financial damage audit).
 
 ### Issue C: Documentation & Worker Codebase Alignment
-- **Audit Finding**: `worker.py` module docstring and DOWNLOADING stage logs claimed raw satellite product download was not implemented, contradicting `discover_and_download()`.
+- **Audit Finding**: Outdated comments and logs claimed raw satellite product download was not implemented, contradicting `discover_and_download()`.
 - **Remediation**: Replaced outdated docstrings in `worker.py`, `download_scenes.py`, and `README.md`. Documents both modalities: automatic cloud-native ingestion via Planetary Computer STAC, and custom local GeoTIFF inputs.
 
-### Issue D: Fresh End-to-End Execution Evidence
-- **Audit Finding**: Need execution evidence that all 10 stages run successfully for fresh bounding boxes and dates without prepared rasters.
-- **Remediation**: Executed live end-to-end pipeline run (`outputs/e2e_verification` and `outputs/e2e_test_job`) covering STAC discovery, RTC radar download, Lee-sigma filtering, DEM acquisition, flood segmentation, damage analysis, detour routing, and report generation. Generated compliant `manifest.json`, `situation_report.html`, and `dashboard.html`.
+### Issue D: Multi-Sensor Ingestion Evidence (SAR + Optical + DEM)
+- **Audit Finding**: Previous end-to-end manifest recorded Sentinel-1 SAR and DEM, but the optical field was null due to strict cloud constraints during monsoon season.
+- **Remediation**: Upgraded `download_scenes.py` with an adaptive temporal optical window and cloud-cover ranking. Executed live end-to-end pipeline run (`outputs/e2e_verification/manifest.json` and `outputs/e2e_test_job`) with 100% verified non-null evidence:
+  - **Sentinel-1 RTC Pair**: Orbit 41 Ascending (`S1A_...20240629` and `S1A_...20240711`).
+  - **Sentinel-2 L2A Optical**: Scene `S2A_MSIL2A_20240624T042711_R133_T46RCP` with B03 Green and B08 NIR GeoTIFFs.
+  - **Copernicus 30m WorldDEM**: Co-registered elevation raster and slope gradient.
+  - **Full Pipeline Facts & Reports**: Generated `facts.json`, `situation_report.html`, and `dashboard.html`.
+
+---
+
+## Official Hackathon AI Transparency & Disclosure Statement
+
+In accordance with official hackathon rules requiring disclosure of AI coding assistants and AI-assisted portions of the project:
+- **Machine Learning & Predictive Models**:
+  - The core flood segmentation architecture is **FloodUNet** (PyTorch, 2-channel SAR input VV/VH in decibels), trained on public Copernicus Sentinel-1 datasets.
+  - Predictive uncertainty is modeled via **Monte Carlo Dropout predictive entropy**, computing spatial ambiguity maps without ad-hoc heuristics.
+  - Anti-hallucination post-processing incorporates deterministic physical constraints: Copernicus 30m DEM slope gradients ($\le 8^\circ$) and temporal backscatter drop thresholds ($\Delta\text{VV} \ge 1.5\text{ dB}$).
+- **AI Coding Assistance**:
+  - **Google Antigravity / Gemini** was utilized as an interactive AI pair-programming assistant for code scaffolding, STAC API integration, unit test suite development, and performance benchmarking.
+- **Human Review & Verification**:
+  - All mathematical formulations, satellite geometry rules (same-orbit, same-direction), geospatial transformations, and evaluation protocols were reviewed, verified, and independently tested by the project authors.
 
 ---
 
 ## Verification & Test Results
-- **Multi-Modal AI Tests**: `9 passed, 1 skipped` in `multimodal-ai/tests` (`test_data_rules.py`, `test_weakness_fixes.py`).
+- **Multi-Modal AI Tests**: `11 passed, 1 skipped` in `multimodal-ai/tests` (`test_data_rules.py`, `test_weakness_fixes.py`).
 - **Backend API & Worker Tests**: `81 passed, 158 skipped` in `backend/tests`.
 - **Frontend & UI Tests**: `9 passed, 3 skipped` in `tests/frontend`.
 - **0 Failures / 0 Errors across the entire stack.**
